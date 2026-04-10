@@ -7,6 +7,7 @@ import RoadmapFlowPage from './pages/RoadmapFlowPage';
 import DashboardPage from './pages/DashboardPage';
 import LoginSignupPage from './pages/LoginSignupPage';
 import AdminPanelPage from './pages/AdminPanelPage';
+import CustomRoadmapEditorPage from './pages/CustomRoadmapEditorPage';
 import { AuthProvider } from './context/AuthContext';
 import { AdminRoute } from './components/ProtectedRoute';
 
@@ -22,12 +23,16 @@ function App() {
             <Route path="/roadmap/:id" element={<RoadmapFlowPage />} />
             <Route path="/login" element={<LoginSignupPage />} />
             
+            {/* Custom Roadmap Routes (any logged-in user) */}
+            <Route path="/custom/new" element={<CustomRoadmapEditorPage />} />
+            <Route path="/custom/:id/edit" element={<CustomRoadmapEditorPage />} />
+            <Route path="/custom/:id" element={<RoadmapFlowPage />} />
+            
             {/* Protected Admin Routes */}
             <Route element={<AdminRoute />}>
               <Route path="/admin" element={<AdminPanelPage />} />
             </Route>
             
-            {/* Dashboard Redirected if not logged in should be handled by Navigate but for now simple route */}
             <Route path="/dashboard" element={<DashboardPage />} />
           </Routes>
         </div>

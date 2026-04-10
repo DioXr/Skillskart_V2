@@ -24,6 +24,10 @@ const UserSchema = new mongoose.Schema({
         enum: ['user', 'subadmin', 'admin'],
         required: true,
         default: 'user'
+    },
+    aiCredits: {
+        type: Number,
+        default: 10 // Give new users 10 free generations
     }
 }, { timestamps: true });
 

@@ -1,8 +1,9 @@
 const mongoose = require('mongoose');
 
+// Reuse the same node/edge schema structure as the admin Roadmap model
 const NodeSchema = new mongoose.Schema({
     id: { type: String, required: true },
-    type: { type: String, default: 'default' },
+    type: { type: String, default: 'proNode' },
     position: {
         x: { type: Number, required: true },
         y: { type: Number, required: true }
@@ -16,7 +17,7 @@ const NodeSchema = new mongoose.Schema({
             url: { type: String },
             type: { type: String, enum: ['video', 'article', 'docs', 'tool', 'code', 'file', 'course', 'book', 'website', 'other'], default: 'article' }
         }],
-        status: { type: String, enum: ['locked', 'in-progress', 'completed'], default: 'locked' }
+        isSpine: { type: Boolean, default: false }
     }
 }, { _id: false });
 
@@ -24,14 +25,14 @@ const EdgeSchema = new mongoose.Schema({
     id: { type: String, required: true },
     source: { type: String, required: true },
     target: { type: String, required: true },
-    type: { type: String, default: 'step' },
+    type: { type: String, default: 'smoothstep' },
     sourceHandle: { type: String },
     targetHandle: { type: String },
     className: { type: String },
     style: { type: mongoose.Schema.Types.Mixed, default: {} }
 }, { _id: false });
 
-const RoadmapSchema = new mongoose.Schema({
+const CustomRoadmapSchema = new mongoose.Schema({
     title: {
         type: String,
         required: true
@@ -39,17 +40,26 @@ const RoadmapSchema = new mongoose.Schema({
     category: {
         type: String,
         enum: ['Career', 'Language', 'Coding', 'Design', 'Custom'],
-        required: true
+        default: 'Custom'
     },
     description: {
-        type: String
+        type: String,
+        default: ''
     },
     nodes: [NodeSchema],
     edges: [EdgeSchema],
-    createdBy: {
+    owner: {
         type: mongoose.Schema.Types.ObjectId,
-        ref: 'User'
+        ref: 'User',
+        required: true
+    },
+    isPublic: {
+        type: Boolean,
+        default: false
     }
 }, { timestamps: true });
 
-module.exports = mongoose.model('Roadmap', RoadmapSchema);
+// Index for fast lookup by owner
+CustomRoadmapSchema.index({ owner: 1 });
+
+module.exports = mongoose.model('CustomRoadmap', CustomRoadmapSchema);

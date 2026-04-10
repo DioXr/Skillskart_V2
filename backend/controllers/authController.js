@@ -24,6 +24,7 @@ const registerUser = async (req, res) => {
                 name: user.name,
                 email: user.email,
                 role: user.role,
+                aiCredits: user.aiCredits,
                 token: generateToken(user._id)
             });
         }
@@ -46,6 +47,7 @@ const loginUser = async (req, res) => {
                 name: user.name,
                 email: user.email,
                 role: user.role,
+                aiCredits: user.aiCredits,
                 token: generateToken(user._id)
             };
             console.log(`[LOGIN] Login successful. Response:`, JSON.stringify(response, null, 2));
@@ -69,7 +71,8 @@ const getUserProfile = async (req, res) => {
             _id: req.user._id,
             name: req.user.name,
             email: req.user.email,
-            role: req.user.role
+            role: req.user.role,
+            aiCredits: req.user.aiCredits
         };
         console.log(`[PROFILE] Response:`, JSON.stringify(response, null, 2));
         res.json(response);

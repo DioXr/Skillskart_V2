@@ -3,6 +3,7 @@ import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import RoadmapEditor from '../components/RoadmapEditor';
 import { useAuth } from '../context/AuthContext';
+import { getLayoutedElements } from '../utils/layout';
 
 const AdminPanelPage = () => {
   const { user, loading } = useAuth();
@@ -17,7 +18,6 @@ const AdminPanelPage = () => {
 
   useEffect(() => {
     if (!loading && !user) navigate('/login');
-    // For backward compatibility while users migrate sessions
     if (user && !(user.role === 'admin' || user.role === 'subadmin' || user.isAdmin)) {
         navigate('/');
     }
@@ -26,18 +26,13 @@ const AdminPanelPage = () => {
   useEffect(() => {
     if (user) {
         fetchRoadmaps();
-        if (user.role === 'admin') {
-            fetchUsers();
-        }
+        if (user.role === 'admin') fetchUsers();
     }
   }, [user]);
 
   if (loading || !user) return (
-    <div style={{ height: '80vh', display: 'flex', justifyContent: 'center', alignItems: 'center', color: 'var(--text-secondary)' }}>
-        <div style={{ textAlign: 'center' }}>
-            <div className="spinner" style={{ marginBottom: '20px' }}>⏳</div>
-            <h2>Authenticating your workspace...</h2>
-        </div>
+    <div style={{ height: '80vh', display: 'flex', justifyContent: 'center', alignItems: 'center', color: 'var(--text-muted)' }}>
+      <p>Authenticating...</p>
     </div>
   );
 
@@ -67,7 +62,7 @@ const AdminPanelPage = () => {
   };
 
   const deleteRoadmap = async (id) => {
-    if (!window.confirm('Are you sure you want to delete this roadmap?')) return;
+    if (!window.confirm('Delete this roadmap?')) return;
     try {
       const config = { headers: { Authorization: `Bearer ${user.token}` } };
       await axios.delete(`/api/roadmaps/${id}`, config);
@@ -92,17 +87,16 @@ const AdminPanelPage = () => {
     setAiLoading(true);
     try {
       const config = { headers: { Authorization: `Bearer ${user.token}` } };
-      const { data } = await axios.post('/api/ai/generate', { topic: aiTopic }, config);
-      
-      // Open editor with new AI roadmap
-      // Since it's not saved yet, we'll need to handle it. For now, let's just save it immediately and reload.
-      await axios.post('/api/roadmaps', data, config);
+      const { data: aiData } = await axios.post('/api/ai/generate', { topic: aiTopic }, config);
+      const { nodes: layoutedNodes, edges: layoutedEdges } = getLayoutedElements(aiData.nodes, aiData.edges);
+      const finalRoadmap = { ...aiData, nodes: layoutedNodes, edges: layoutedEdges };
+      await axios.post('/api/roadmaps', finalRoadmap, config);
       setAiTopic('');
       setActiveTab('content');
       fetchRoadmaps();
-      alert('AI Pathway Generated Successfully!');
+      alert('Roadmap generated successfully!');
     } catch (error) {
-      alert('AI Generation failed');
+      alert('AI generation failed');
     } finally {
       setAiLoading(false);
     }
@@ -112,7 +106,7 @@ const AdminPanelPage = () => {
     return (
       <div className="container animate-fade-in" style={{ height: 'calc(100vh - 120px)', marginTop: '20px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '15px', alignItems: 'center' }}>
-          <h2 style={{ margin: 0 }}>Roadmap Builder</h2>
+          <h2 style={{ margin: 0, fontSize: '1.3rem' }}>Roadmap Editor</h2>
           <button className="btn-secondary" onClick={() => { setEditingId(null); fetchRoadmaps(); }}>Exit Editor</button>
         </div>
         <div style={{ height: '90%' }}>
@@ -122,166 +116,150 @@ const AdminPanelPage = () => {
     );
   }
 
+  const tabs = [
+    { id: 'overview', label: 'Overview' },
+    { id: 'content', label: 'Roadmaps' },
+    { id: 'ai', label: 'AI Generate' },
+    ...(user.role === 'admin' ? [{ id: 'staff', label: 'Users' }] : []),
+  ];
+
   return (
     <div style={{ display: 'flex', minHeight: 'calc(100vh - 80px)' }}>
-      {/* 🛠️ Admin Sidebar */}
-      <div className="admin-sidebar shadow-lg">
-        <div style={{ marginBottom: '40px', padding: '0 20px' }}>
-            <h2 style={{ fontSize: '1.2rem', fontWeight: '800', letterSpacing: '2px' }}>CONTROL<br/>CENTER</h2>
-            <div style={{ fontSize: '0.7rem', color: 'var(--accent-color)', fontWeight: '800', marginTop: '5px' }}>
-                {user.role === 'admin' ? 'SYSTEM OVERLORD' : 'CONTENT COMMANDER'}
-            </div>
+      {/* Sidebar */}
+      <div className="admin-sidebar">
+        <div style={{ marginBottom: '32px', padding: '0 16px' }}>
+          <h3 style={{ fontSize: '0.8rem', fontWeight: '600', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '1px' }}>Admin Panel</h3>
         </div>
 
-        <div className={`admin-nav-item ${activeTab === 'overview' ? 'active' : ''}`} onClick={() => setActiveTab('overview')}>
-            <span>📊</span> Overview
-        </div>
-        <div className={`admin-nav-item ${activeTab === 'content' ? 'active' : ''}`} onClick={() => setActiveTab('content')}>
-            <span>🗺️</span> Content Manager
-        </div>
-        <div className={`admin-nav-item ${activeTab === 'ai' ? 'active' : ''}`} onClick={() => setActiveTab('ai')}>
-            <span>🧠</span> AI Pathfinder
-        </div>
-        {user.role === 'admin' && (
-            <div className={`admin-nav-item ${activeTab === 'staff' ? 'active' : ''}`} onClick={() => setActiveTab('staff')}>
-                <span>🛡️</span> Staff Management
-            </div>
-        )}
+        {tabs.map(tab => (
+          <div key={tab.id} className={`admin-nav-item ${activeTab === tab.id ? 'active' : ''}`} onClick={() => setActiveTab(tab.id)}>
+            {tab.label}
+          </div>
+        ))}
       </div>
 
-      {/* 🖥️ Main Content Area */}
-      <div style={{ flex: 1, padding: '60px' }} className="animate-fade-in">
+      {/* Main Content */}
+      <div style={{ flex: 1, padding: '48px' }} className="animate-fade-in">
         
         {activeTab === 'overview' && (
-            <div>
-                <h1 style={{ fontSize: '2.5rem', marginBottom: '40px' }}>Dashboard Overview</h1>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '30px' }}>
-                    <div className="glass-panel" style={{ padding: '40px' }}>
-                        <h4 style={{ color: 'var(--text-secondary)', textTransform: 'uppercase', fontSize: '0.8rem', letterSpacing: '1px' }}>Global Pathways</h4>
-                        <div style={{ fontSize: '3.5rem', fontWeight: '800' }}>{stats.roadmaps}</div>
-                    </div>
-                    <div className="glass-panel" style={{ padding: '40px' }}>
-                        <h4 style={{ color: 'var(--text-secondary)', textTransform: 'uppercase', fontSize: '0.8rem', letterSpacing: '1px' }}>Total Learners</h4>
-                        <div style={{ fontSize: '3.5rem', fontWeight: '800' }}>{stats.users}</div>
-                    </div>
-                    <div className="glass-panel" style={{ padding: '40px' }}>
-                        <h4 style={{ color: 'var(--text-secondary)', textTransform: 'uppercase', fontSize: '0.8rem', letterSpacing: '1px' }}>Active Staff</h4>
-                        <div style={{ fontSize: '3.5rem', fontWeight: '800' }}>{stats.admins}</div>
-                    </div>
-                </div>
+          <div>
+            <h1 style={{ fontSize: '1.8rem', marginBottom: '32px' }}>Overview</h1>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
+              <div className="card" style={{ padding: '28px' }}>
+                <p style={{ color: 'var(--text-muted)', fontSize: '0.75rem', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px' }}>Roadmaps</p>
+                <div style={{ fontSize: '2.5rem', fontWeight: '700' }}>{stats.roadmaps}</div>
+              </div>
+              <div className="card" style={{ padding: '28px' }}>
+                <p style={{ color: 'var(--text-muted)', fontSize: '0.75rem', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px' }}>Users</p>
+                <div style={{ fontSize: '2.5rem', fontWeight: '700' }}>{stats.users}</div>
+              </div>
+              <div className="card" style={{ padding: '28px' }}>
+                <p style={{ color: 'var(--text-muted)', fontSize: '0.75rem', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px' }}>Staff</p>
+                <div style={{ fontSize: '2.5rem', fontWeight: '700' }}>{stats.admins}</div>
+              </div>
             </div>
+          </div>
         )}
 
         {activeTab === 'content' && (
-            <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '40px' }}>
-                    <h1 style={{ fontSize: '2.5rem', margin: 0 }}>Content Manager</h1>
-                    <button className="btn-primary" onClick={() => setEditingId('new')}>+ Create New Path</button>
-                </div>
-                <div className="glass-panel">
-                    <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-                        <thead>
-                            <tr style={{ borderBottom: '1px solid var(--surface-border)', opacity: 0.5, fontSize: '0.8rem' }}>
-                                <th style={{ padding: '20px' }}>TITLE</th>
-                                <th style={{ padding: '20px' }}>CATEGORY</th>
-                                <th style={{ padding: '20px' }}>CREATED</th>
-                                <th style={{ padding: '20px', textAlign: 'right' }}>ACTIONS</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {roadmaps.map(rmap => (
-                                <tr key={rmap._id} style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
-                                    <td style={{ padding: '20px', fontWeight: '800' }}>{rmap.title}</td>
-                                    <td style={{ padding: '20px' }}>
-                                        <span className={`badge badge-${rmap.category.toLowerCase()}`}>{rmap.category}</span>
-                                    </td>
-                                    <td style={{ padding: '20px', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>{new Date(rmap.createdAt).toLocaleDateString()}</td>
-                                    <td style={{ padding: '20px', textAlign: 'right' }}>
-                                        <button className="btn-secondary" style={{ marginRight: '10px' }} onClick={() => setEditingId(rmap._id)}>Edit</button>
-                                        <button className="btn-danger" onClick={() => deleteRoadmap(rmap._id)}>Delete</button>
-                                    </td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+              <h1 style={{ fontSize: '1.8rem', margin: 0 }}>Roadmaps</h1>
+              <button className="btn-primary" onClick={() => setEditingId('new')}>+ Create</button>
             </div>
+            <div className="card" style={{ overflow: 'hidden' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                <thead>
+                  <tr style={{ borderBottom: '1px solid var(--card-border)' }}>
+                    <th style={{ padding: '14px 20px', fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Title</th>
+                    <th style={{ padding: '14px 20px', fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Category</th>
+                    <th style={{ padding: '14px 20px', fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Created</th>
+                    <th style={{ padding: '14px 20px', fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', textAlign: 'right' }}>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {roadmaps.map(rmap => (
+                    <tr key={rmap._id} style={{ borderBottom: '1px solid var(--card-border)' }}>
+                      <td style={{ padding: '14px 20px', fontWeight: '600', fontSize: '0.9rem' }}>{rmap.title}</td>
+                      <td style={{ padding: '14px 20px' }}>
+                        <span className={`badge badge-${rmap.category.toLowerCase()}`}>{rmap.category}</span>
+                      </td>
+                      <td style={{ padding: '14px 20px', fontSize: '0.85rem', color: 'var(--text-muted)' }}>{new Date(rmap.createdAt).toLocaleDateString()}</td>
+                      <td style={{ padding: '14px 20px', textAlign: 'right' }}>
+                        <button className="btn-secondary" style={{ marginRight: '8px', padding: '6px 14px', fontSize: '0.8rem' }} onClick={() => setEditingId(rmap._id)}>Edit</button>
+                        <button className="btn-danger" style={{ padding: '6px 14px', fontSize: '0.8rem' }} onClick={() => deleteRoadmap(rmap._id)}>Delete</button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
         )}
 
         {activeTab === 'ai' && (
-            <div style={{ maxWidth: '800px' }}>
-                <h1 style={{ fontSize: '2.5rem', marginBottom: '20px' }}>AI Pathfinder</h1>
-                <p style={{ color: 'var(--text-secondary)', marginBottom: '40px' }}>
-                    Enter any learning topic and let SkillKart AI generate a high-performance, branched roadmap with resources instantly.
-                </p>
-                <div className="glass-panel" style={{ padding: '40px', display: 'flex', gap: '20px' }}>
-                    <input 
-                        type="text" 
-                        placeholder="e.g. Astro-Physics, Machine Learning, UI/UX" 
-                        value={aiTopic}
-                        onChange={(e) => setAiTopic(e.target.value)}
-                        style={{ flex: 1, background: 'rgba(0,0,0,0.3)', border: '1px solid var(--surface-border)', padding: '15px', borderRadius: '12px', color: '#fff', fontSize: '1.1rem' }}
-                    />
-                    <button 
-                        className="btn-primary" 
-                        onClick={generateAiRoadmap} 
-                        disabled={aiLoading}
-                        style={{ padding: '0 40px' }}
-                    >
-                        {aiLoading ? 'Generating...' : 'Generate ⚡'}
-                    </button>
-                </div>
+          <div style={{ maxWidth: '640px' }}>
+            <h1 style={{ fontSize: '1.8rem', marginBottom: '10px' }}>AI Generate</h1>
+            <p style={{ color: 'var(--text-muted)', marginBottom: '32px', fontSize: '0.9rem' }}>
+              Enter a topic and generate a full roadmap with AI. The roadmap will include nodes, edges, descriptions, code snippets, and resources.
+            </p>
+            <div className="card" style={{ padding: '28px', display: 'flex', gap: '12px' }}>
+              <input 
+                type="text" 
+                placeholder="e.g. Machine Learning, React Developer, DevOps" 
+                value={aiTopic}
+                onChange={(e) => setAiTopic(e.target.value)}
+                className="search-input"
+                style={{ flex: 1 }}
+              />
+              <button className="btn-primary" onClick={generateAiRoadmap} disabled={aiLoading} style={{ padding: '10px 28px' }}>
+                {aiLoading ? 'Generating...' : 'Generate'}
+              </button>
             </div>
+          </div>
         )}
 
         {activeTab === 'staff' && (
-            <div>
-                <h1 style={{ fontSize: '2.5rem', marginBottom: '40px' }}>Staff Management</h1>
-                <div className="glass-panel">
-                    <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-                        <thead>
-                            <tr style={{ borderBottom: '1px solid var(--surface-border)', opacity: 0.5, fontSize: '0.8rem' }}>
-                                <th style={{ padding: '20px' }}>NAME</th>
-                                <th style={{ padding: '20px' }}>EMAIL</th>
-                                <th style={{ padding: '20px' }}>ROLE</th>
-                                <th style={{ padding: '20px', textAlign: 'right' }}>MANAGE</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {users.map(u => (
-                                <tr key={u._id} style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
-                                    <td style={{ padding: '20px', fontWeight: '800' }}>{u.name}</td>
-                                    <td style={{ padding: '20px', color: 'var(--text-secondary)' }}>{u.email}</td>
-                                    <td style={{ padding: '20px' }}>
-                                        <span style={{ 
-                                            padding: '4px 10px', 
-                                            borderRadius: '20px', 
-                                            fontSize: '0.7rem', 
-                                            fontWeight: '800',
-                                            background: u.role === 'admin' ? 'var(--accent-color)' : u.role === 'subadmin' ? '#ffd700' : 'rgba(255,255,255,0.1)',
-                                            color: u.role === 'user' ? '#fff' : '#000'
-                                        }}>
-                                            {u.role.toUpperCase()}
-                                        </span>
-                                    </td>
-                                    <td style={{ padding: '20px', textAlign: 'right' }}>
-                                        <select 
-                                            value={u.role}
-                                            disabled={u._id === user._id}
-                                            onChange={(e) => handleRoleChange(u._id, e.target.value)}
-                                            style={{ background: '#111', color: '#fff', border: '1px solid var(--surface-border)', padding: '8px', borderRadius: '8px' }}
-                                        >
-                                            <option value="user">User</option>
-                                            <option value="subadmin">SubAdmin</option>
-                                            <option value="admin">SuperAdmin</option>
-                                        </select>
-                                    </td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
+          <div>
+            <h1 style={{ fontSize: '1.8rem', marginBottom: '24px' }}>User Management</h1>
+            <div className="card" style={{ overflow: 'hidden' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                <thead>
+                  <tr style={{ borderBottom: '1px solid var(--card-border)' }}>
+                    <th style={{ padding: '14px 20px', fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Name</th>
+                    <th style={{ padding: '14px 20px', fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Email</th>
+                    <th style={{ padding: '14px 20px', fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Role</th>
+                    <th style={{ padding: '14px 20px', fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', textAlign: 'right' }}>Manage</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {users.map(u => (
+                    <tr key={u._id} style={{ borderBottom: '1px solid var(--card-border)' }}>
+                      <td style={{ padding: '14px 20px', fontWeight: '600', fontSize: '0.9rem' }}>{u.name}</td>
+                      <td style={{ padding: '14px 20px', color: 'var(--text-muted)', fontSize: '0.85rem' }}>{u.email}</td>
+                      <td style={{ padding: '14px 20px' }}>
+                        <span className={`badge ${u.role === 'admin' ? 'badge-career' : u.role === 'subadmin' ? 'badge-coding' : 'badge-custom'}`}>
+                          {u.role}
+                        </span>
+                      </td>
+                      <td style={{ padding: '14px 20px', textAlign: 'right' }}>
+                        <select 
+                          value={u.role}
+                          disabled={u._id === user._id}
+                          onChange={(e) => handleRoleChange(u._id, e.target.value)}
+                          style={{ background: 'var(--card)', color: 'var(--text)', border: '1px solid var(--card-border)', padding: '6px 10px', borderRadius: '6px', fontSize: '0.8rem' }}
+                        >
+                          <option value="user">User</option>
+                          <option value="subadmin">SubAdmin</option>
+                          <option value="admin">Admin</option>
+                        </select>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
+          </div>
         )}
 
       </div>

@@ -8,15 +8,21 @@ const UserProgressSchema = new mongoose.Schema({
     },
     roadmap: {
         type: mongoose.Schema.Types.ObjectId,
-        ref: 'Roadmap',
-        required: true
+        required: true,
+        refPath: 'roadmapModel' // Dynamic reference
+    },
+    roadmapModel: {
+        type: String,
+        required: true,
+        enum: ['Roadmap', 'CustomRoadmap'],
+        default: 'Roadmap'
     },
     completedNodes: [{
-        type: String // nodeId (e.g., '1', 'html-basics')
+        type: String // nodeId (e.g., 'node_1', 'html-basics')
     }]
 }, { timestamps: true });
 
-// Ensure a user only has one progress document per roadmap
+// Ensure a user only has one progress document per specific roadmap
 UserProgressSchema.index({ user: 1, roadmap: 1 }, { unique: true });
 
 module.exports = mongoose.model('UserProgress', UserProgressSchema);

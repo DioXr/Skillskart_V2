@@ -7,42 +7,77 @@ const path = require('path');
 dotenv.config({ path: path.join(__dirname, '../.env') });
 
 const sampleRoadmaps = [
-    // --- 1. FULL STACK WEB DEVELOPER (FLOODED) ---
+    // --- 1. FULL STACK WEB DEVELOPER (FLOODED WITH BRANCHES) ---
     {
         title: "Expert Full-Stack Developer",
         category: "Career",
-        description: "From Semantic HTML to Cloud Deployment. A 18-node professional curriculum.",
+        description: "From Semantic HTML to Cloud Deployment. A branched professional curriculum inspired by Roadmap.sh.",
         nodes: [
-            { id: "html", type: "proNode", position: { x: 250, y: 0 }, data: { label: "HTML5 & Accessibility", description: "Semantic tags and ARIA standards.", resources: [{ label: "MDN Docs", url: "https://developer.mozilla.org", type: "docs" }] } },
-            { id: "css", type: "proNode", position: { x: 250, y: 100 }, data: { label: "Advanced CSS Layouts", description: "Flexbox, Grid, and Animations.", resources: [{ label: "CSS Tricks", url: "https://css-tricks.com", type: "article" }] } },
-            { id: "js", type: "proNode", position: { x: 250, y: 200 }, data: { label: "JavaScript Deep Dive", description: "Closures, Async, and Event Loop.", resources: [{ label: "JS Info", url: "https://javascript.info", type: "docs" }] } },
-            { id: "react", type: "proNode", position: { x: 250, y: 300 }, data: { label: "React JS: Senior Level", description: "Context API, Hooks, and Optimization.", resources: [{ label: "React.dev", url: "https://react.dev", type: "docs" }] } },
-            { id: "node", type: "proNode", position: { x: 250, y: 400 }, data: { label: "Node.js Backend", description: "File systems and non-blocking I/O.", resources: [{ label: "Node.js Best Practices", url: "https://github.com/goldbergyoni/nodebestpractices", type: "docs" }] } },
-            { id: "docker", type: "proNode", position: { x: 250, y: 500 }, data: { label: "Docker & Containers", description: "Deploying anywhere with confidence.", codeSnippet: "docker-compose up --build" } }
+            // Spine
+            { id: "internet", type: "proNode", position: { x: 500, y: 0 }, data: { label: "Internet Fundamentals", description: "How the web works, HTTP, and Browsers.", isSpine: true } },
+            
+            // Branches from Internet
+            { id: "http", type: "proNode", position: { x: 0, y: 0 }, data: { label: "What is HTTP?", description: "Transfer protocols and request-response cycle.", isSpine: false } },
+            { id: "dns", type: "proNode", position: { x: 0, y: 0 }, data: { label: "DNS & Domains", description: "How names are resolved to IPs.", isSpine: false } },
+            { id: "hosting", type: "proNode", position: { x: 0, y: 0 }, data: { label: "Hosting", description: "Where your websites live.", isSpine: false } },
+            
+            // Spine continues
+            { id: "frontend", type: "proNode", position: { x: 500, y: 300 }, data: { label: "Frontend Basics", description: "HTML, CSS, and basic JavaScript.", isSpine: true } },
+            
+            // Branches from Frontend
+            { id: "html", type: "proNode", position: { x: 0, y: 0 }, data: { label: "Semantic HTML", description: "Accessibility and structure.", isSpine: false } },
+            { id: "css_basic", type: "proNode", position: { x: 0, y: 0 }, data: { label: "CSS Foundations", description: "Selectors, Flexbox, and Grid.", isSpine: false } },
+            
+            // Spine continues
+            { id: "js_adv", type: "proNode", position: { x: 500, y: 600 }, data: { label: "Advanced JavaScript", description: "Async, Prototypes, and ESM.", isSpine: true } },
+            
+            // Branches from JS
+            { id: "dom", type: "proNode", position: { x: 0, y: 0 }, data: { label: "DOM Manipulation", description: "Interaction with the browser API.", isSpine: false } },
+            { id: "apis", type: "proNode", position: { x: 0, y: 0 }, data: { label: "Fetch & Web APIs", description: "Working with external data.", isSpine: false } },
+            
+            // Spine continues
+            { id: "react_spine", type: "proNode", position: { x: 500, y: 900 }, data: { label: "Modern Frontend (React)", description: "Hooks, State, and Routing.", isSpine: true } },
+            
+            // Branches from React
+            { id: "nextjs", type: "proNode", position: { x: 0, y: 0 }, data: { label: "Next.js & SSR", description: "Full-stack React frameworks.", isSpine: false } },
+            { id: "state_mgnt", type: "proNode", position: { x: 0, y: 0 }, data: { label: "State Management", description: "Redux, Zustand, and Context.", isSpine: false } }
         ],
         edges: [
-            { id: "e1", source: "html", target: "css", animated: true }, { id: "e2", source: "css", target: "js", animated: true },
-            { id: "e3", source: "js", target: "react", animated: true }, { id: "e4", source: "react", target: "node", animated: true },
-            { id: "e5", source: "node", target: "docker", animated: true }
+            // Spine Edges
+            { id: "e_i_f", source: "internet", target: "frontend", type: "step", style: { stroke: "#0a84ff", strokeWidth: 3 } },
+            { id: "e_f_j", source: "frontend", target: "js_adv", type: "step", style: { stroke: "#0a84ff", strokeWidth: 3 } },
+            { id: "e_j_r", source: "js_adv", target: "react_spine", type: "step", style: { stroke: "#0a84ff", strokeWidth: 3 } },
+            
+            // Branch Edges
+            { id: "e_i_h", source: "internet", target: "http", type: "step", style: { stroke: "#0a84ff", strokeWidth: 2, strokeDasharray: "5 5" } },
+            { id: "e_i_d", source: "internet", target: "dns", type: "step", style: { stroke: "#0a84ff", strokeWidth: 2, strokeDasharray: "5 5" } },
+            { id: "e_i_ho", source: "internet", target: "hosting", type: "step", style: { stroke: "#0a84ff", strokeWidth: 2, strokeDasharray: "5 5" } },
+            
+            { id: "e_f_ht", source: "frontend", target: "html", type: "step", style: { stroke: "#0a84ff", strokeWidth: 2, strokeDasharray: "5 5" } },
+            { id: "e_f_cs", source: "frontend", target: "css_basic", type: "step", style: { stroke: "#0a84ff", strokeWidth: 2, strokeDasharray: "5 5" } },
+            
+            { id: "e_j_do", source: "js_adv", target: "dom", type: "step", style: { stroke: "#0a84ff", strokeWidth: 2, strokeDasharray: "5 5" } },
+            { id: "e_j_ap", source: "js_adv", target: "apis", type: "step", style: { stroke: "#0a84ff", strokeWidth: 2, strokeDasharray: "5 5" } },
+            
+            { id: "e_r_nx", source: "react_spine", target: "nextjs", type: "step", style: { stroke: "#0a84ff", strokeWidth: 2, strokeDasharray: "5 5" } },
+            { id: "e_r_st", source: "react_spine", target: "state_mgnt", type: "step", style: { stroke: "#0a84ff", strokeWidth: 2, strokeDasharray: "5 5" } }
         ]
     },
     // --- 2. DEVOPS ENGINEER ---
     {
         title: "DevOps Engineer Professional",
         category: "Career",
-        description: "Focus on Master Automation, CI/CD, and Cloud Infrastructure.",
+        description: "Master Automation and Infrastructure.",
         nodes: [
-            { id: "linux", type: "proNode", position: { x: 250, y: 0 }, data: { label: "Linux Administration", description: "Kernel, Shell Scripting, and Syscalls." } },
-            { id: "networking", type: "proNode", position: { x: 250, y: 100 }, data: { label: "Networking Fundamentals", description: "TCP/IP, DNS, and HTTP/S." } },
-            { id: "git", type: "proNode", position: { x: 250, y: 200 }, data: { label: "Advanced Git", description: "Hooks, Branching, and Multi-Repo management." } },
-            { id: "cicd", type: "proNode", position: { x: 250, y: 300 }, data: { label: "CI/CD (Jenkins/GitHub Actions)", description: "Automated pipelines and testing." } },
-            { id: "k8s", type: "proNode", position: { x: 250, y: 400 }, data: { label: "Kubernetes (K8s)", description: "Pods, Services, and Deployments." } },
-            { id: "terraform", type: "proNode", position: { x: 250, y: 500 }, data: { label: "Infrastructure as Code (IaC)", description: "Terraform and Ansible." } }
+            { id: "linux", type: "proNode", position: { x: 250, y: 0 }, data: { label: "Linux Administration", isSpine: true } },
+            { id: "bash", type: "proNode", position: { x: 0, y: 0 }, data: { label: "Bash Scripting", isSpine: false } },
+            { id: "networking", type: "proNode", position: { x: 250, y: 150 }, data: { label: "Networking", isSpine: true } },
+            { id: "docker", type: "proNode", position: { x: 250, y: 300 }, data: { label: "Containers (Docker)", isSpine: true } }
         ],
         edges: [
-            { id: "d1", source: "linux", target: "networking", animated: true }, { id: "d2", source: "networking", target: "git", animated: true },
-            { id: "d3", source: "git", target: "cicd", animated: true }, { id: "d4", source: "cicd", target: "k8s", animated: true },
-            { id: "d5", source: "k8s", target: "terraform", animated: true }
+            { id: "d1", source: "linux", target: "networking", type: "step" },
+            { id: "d2", source: "linux", target: "bash", type: "step", style: { strokeDasharray: "5 5" } },
+            { id: "d3", source: "networking", target: "docker", type: "step" }
         ]
     },
     // --- 3. DATA SCIENCE ---
@@ -68,14 +103,15 @@ const sampleRoadmaps = [
         category: "Language",
         description: "System programming with safety and performance.",
         nodes: [
-            { id: "rust_syntax", type: "proNode", position: { x: 250, y: 0 }, data: { label: "Rust Basics & Syntax", description: "Enums, Pattern Matching, and Traits." } },
-            { id: "borrowing", type: "proNode", position: { x: 250, y: 100 }, data: { label: "Ownership & Borrowing", description: "The core heart of Rust development." } },
-            { id: "rust_async", type: "proNode", position: { x: 250, y: 200 }, data: { label: "Asynchronous Rust", description: "Tokio and Futures ecosystem." } },
-            { id: "rust_ffi", type: "proNode", position: { x: 250, y: 300 }, data: { label: "Unsafe Rust & FFI", description: "Interfacing with C and low-level optimization." } }
+            { id: "rust_syntax", type: "proNode", position: { x: 500, y: 0 }, data: { label: "Rust Basics & Syntax", description: "Enums, Pattern Matching, and Traits.", isSpine: true } },
+            { id: "borrowing", type: "proNode", position: { x: 500, y: 200 }, data: { label: "Ownership & Borrowing", description: "The core heart of Rust development.", isSpine: true } },
+            { id: "rust_async", type: "proNode", position: { x: 200, y: 300 }, data: { label: "Asynchronous Rust", description: "Tokio and Futures ecosystem.", isSpine: false } }, // Branch
+            { id: "rust_ffi", type: "proNode", position: { x: 500, y: 400 }, data: { label: "Unsafe Rust & FFI", description: "Interfacing with C and low-level optimization.", isSpine: true } }
         ],
         edges: [
-            { id: "r1", source: "rust_syntax", target: "borrowing", animated: true }, { id: "r2", source: "borrowing", target: "rust_async", animated: true },
-            { id: "r3", source: "rust_async", target: "rust_ffi", animated: true }
+            { id: "r1", source: "rust_syntax", target: "borrowing", type: "step", style: { stroke: "#0a84ff", strokeWidth: 3 } },
+            { id: "r2", source: "borrowing", target: "rust_async", type: "step", style: { stroke: "#0a84ff", strokeWidth: 2, strokeDasharray: "5 5" } },
+            { id: "r3", source: "borrowing", target: "rust_ffi", type: "step", style: { stroke: "#0a84ff", strokeWidth: 3 } }
         ]
     },
     // --- 5. GO LANGUAGE ---
@@ -84,12 +120,13 @@ const sampleRoadmaps = [
         category: "Language",
         description: "Scalable backend development with Go.",
         nodes: [
-            { id: "go_basics", type: "proNode", position: { x: 250, y: 0 }, data: { label: "Go Syntax & Fundamentals", description: "Structs, Interfaces, and Packages." } },
-            { id: "goroutines", type: "proNode", position: { x: 250, y: 100 }, data: { label: "Concurrency in Go", description: "Goroutines, Channels, and Select." } },
-            { id: "go_architecture", type: "proNode", position: { x: 250, y: 200 }, data: { label: "Scalable Architecture", description: "Building microservices with Go." } }
+            { id: "go_basics", type: "proNode", position: { x: 500, y: 0 }, data: { label: "Go Syntax & Fundamentals", description: "Structs, Interfaces, and Packages.", isSpine: true } },
+            { id: "goroutines", type: "proNode", position: { x: 750, y: 150 }, data: { label: "Concurrency in Go", description: "Goroutines, Channels, and Select.", isSpine: false } },
+            { id: "go_architecture", type: "proNode", position: { x: 500, y: 300 }, data: { label: "Scalable Architecture", description: "Building microservices with Go.", isSpine: true } }
         ],
         edges: [
-            { id: "g1", source: "go_basics", target: "goroutines", animated: true }, { id: "g2", source: "goroutines", target: "go_architecture", animated: true }
+            { id: "g1", source: "go_basics", target: "goroutines", type: "step", style: { stroke: "#0a84ff", strokeWidth: 2, strokeDasharray: "5 5" } },
+            { id: "g2", source: "go_basics", target: "go_architecture", type: "step", style: { stroke: "#0a84ff", strokeWidth: 3 } }
         ]
     },
     // --- 6. BLOCKCHAIN DEVELOPER ---

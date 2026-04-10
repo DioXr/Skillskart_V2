@@ -62,8 +62,24 @@ export const AuthProvider = ({ children }) => {
     localStorage.removeItem('userInfo');
   };
 
+  const refreshUser = async () => {
+    const userInfo = localStorage.getItem('userInfo');
+    if (userInfo) {
+      const storedUser = JSON.parse(userInfo);
+      try {
+        const config = { headers: { Authorization: `Bearer ${storedUser.token}` } };
+        const { data: latestProfile } = await axios.get('/api/auth/profile', config);
+        const updatedUser = { ...storedUser, ...latestProfile };
+        setUser(updatedUser);
+        localStorage.setItem('userInfo', JSON.stringify(updatedUser));
+      } catch (error) {
+        console.error('Refresh User failed', error);
+      }
+    }
+  };
+
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout }}>
+    <AuthContext.Provider value={{ user, loading, login, register, logout, refreshUser }}>
       {children}
     </AuthContext.Provider>
   );

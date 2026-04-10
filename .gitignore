@@ -28,3 +28,11 @@ yarn-error.log*
 
 # Test files
 backend/test-ai.js
+backend/test-db.js
+
+# IDE files
+.vs/
+.vs*
+.sln
+.slnx
+vsworkspace/

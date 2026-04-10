@@ -30,7 +30,8 @@ app.get('/', (req, res) => {
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/roadmaps', require('./routes/roadmap'));
 app.use('/api/progress', require('./routes/progress'));
-app.use('/api/ai', require('./routes/ai')); // Added AI Endpoint
+app.use('/api/ai', require('./routes/ai'));
+app.use('/api/custom-roadmaps', require('./routes/customRoadmap'));
 
 const PORT = process.env.PORT || 5000;
 
