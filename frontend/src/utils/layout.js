@@ -1,8 +1,8 @@
 import dagre from 'dagre';
 import { Position } from '@xyflow/react';
 
-const NODE_WIDTH = 220;
-const NODE_HEIGHT = 60;
+const NODE_WIDTH = 300;
+const NODE_HEIGHT = 100;
 
 /**
  * Uses the Dagre library to compute a proper hierarchical tree layout
@@ -16,11 +16,11 @@ export const getLayoutedElements = (nodes, edges) => {
 
   dagreGraph.setGraph({
     rankdir: 'TB',
-    nodesep: 80,      // Horizontal spacing between nodes on same rank
-    ranksep: 120,     // Vertical spacing between ranks (levels)
-    edgesep: 40,      // Spacing between edges
-    marginx: 40,
-    marginy: 40,
+    nodesep: 150,     // Horizontal spacing between nodes on same rank
+    ranksep: 200,     // Vertical spacing between ranks (levels)
+    edgesep: 80,      // Spacing between edges
+    marginx: 80,
+    marginy: 80,
   });
 
   // Add all nodes to the dagre graph

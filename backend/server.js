@@ -36,6 +36,10 @@ app.use('/api/payment', require('./routes/payment'));
 
 const PORT = process.env.PORT || 5000;
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
 });
+
+// ⏳ INCREASE TIMEOUTS for long-running AI generation (70B model)
+server.timeout = 120000; // 2 minutes
+server.headersTimeout = 121000; 

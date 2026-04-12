@@ -7,11 +7,11 @@ const User = require('../models/User');
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
-// Model tiers (Primary is 70B, Fallbacks are Mixtral and 8B)
+// Model tiers (Primary is 70B, Fallback is 8B)
 const MODELS = {
     best:    'llama-3.3-70b-versatile',
     speed:   'llama-3.1-8b-instant',
-    context: 'mixtral-8x7b-32768',
+    context: 'llama-3.1-8b-instant',
 };
 
 /**
@@ -31,7 +31,7 @@ async function callAIWithFallback(params) {
         const isRateLimit = error.status === 429 || error.status === 413 || error.message.includes('rate_limit');
         
         if (isRateLimit && model !== MODELS.context) {
-            console.warn(`[AI Fallback] ${model} failed (Limit Reached). Retrying with Mixtral...`);
+            console.warn(`[AI Fallback] ${model} failed (Limit Reached). Retrying with Fallback Model...`);
             return await groq.chat.completions.create({
                 model: MODELS.context,
                 messages, temperature, max_tokens, response_format
@@ -39,7 +39,7 @@ async function callAIWithFallback(params) {
         }
         
         if (isRateLimit && model === MODELS.context) {
-            console.warn(`[AI Fallback] Mixtral failed. Last resort: 8B Instant...`);
+            console.warn(`[AI Fallback] Fallback Model also failed. Last resort: 8B Instant...`);
             return await groq.chat.completions.create({
                 model: MODELS.speed,
                 messages, temperature, max_tokens, response_format
@@ -267,21 +267,35 @@ router.post('/generate', protect, sanitizeBody, validateAIGenerate, async (req, 
             throw new Error('AI response missing nodes array');
         }
 
-        generatedRoadmap.nodes = generatedRoadmap.nodes.map((n, i) => ({
-            ...n,
-            id: n.id ? String(n.id).replace(/[^a-zA-Z0-9_-]/g, '_') : `node_auto_${i}`,
-            type: n.type || 'topicNode',
-        }));
+        const generateIdMap = new Map();
+        
+        generatedRoadmap.nodes = generatedRoadmap.nodes.map((n, i) => {
+            const originalId = n.id ? String(n.id) : `node_auto_${i}`;
+            const safeId = `node_g_${i}_${Math.random().toString(36).substring(2, 7)}_${Date.now()}`;
+            generateIdMap.set(originalId, safeId);
+
+            return {
+                ...n,
+                id: safeId,
+                type: n.type || 'topicNode',
+            };
+        });
 
         const nodeIds = new Set(generatedRoadmap.nodes.map(n => n.id));
+        
         generatedRoadmap.edges = (generatedRoadmap.edges || [])
-            .filter(e => nodeIds.has(String(e.source)) && nodeIds.has(String(e.target)))
-            .map((e, i) => ({
-                ...e,
-                id: e.id || `e_auto_${i}`,
-                source: String(e.source),
-                target: String(e.target),
-            }));
+            .map((e, i) => {
+                const newSource = generateIdMap.get(String(e.source)) || e.source;
+                const newTarget = generateIdMap.get(String(e.target)) || e.target;
+                
+                return {
+                    ...e,
+                    id: `e_g_${i}_${Date.now()}`,
+                    source: String(newSource),
+                    target: String(newTarget),
+                };
+            })
+            .filter(e => nodeIds.has(e.source) && nodeIds.has(e.target));
 
         if (user.role !== 'admin') {
             user.aiCredits = Math.max(0, (user.aiCredits || 5) - 1);
@@ -358,7 +372,7 @@ No markdown, no explanation, just JSON.`;
             ],
             model: MODELS.best,
             temperature: 0.2,
-            max_tokens: 6000,
+            max_tokens: 5000,
             response_format: { type: 'json_object' }
         });
 
@@ -380,12 +394,17 @@ No markdown, no explanation, just JSON.`;
             throw new Error('AI response missing nodes array');
         }
 
-        const seenIds = new Set();
+        // 🛡️ UNIVERSAL ID PROTECTOR: Map every incoming ID to a unique local ID
+        const nodeIdMap = new Map();
+        
         fullRoadmap.nodes = fullRoadmap.nodes.map((n, i) => {
-            let safeId = n.id ? String(n.id).replace(/[^a-zA-Z0-9_-]/g, '_') : `node_f_${i}`;
-            if (seenIds.has(safeId)) safeId = `${safeId}_${i}`;
-            seenIds.add(safeId);
+            const originalId = n.id ? String(n.id) : `node_auto_${i}`;
+            const safeId = `node_f_${i}_${Math.random().toString(36).substring(2, 7)}`;
             
+            // Map the original AI ID to our new Safe ID
+            // If multiple nodes have the same ID, the map will store the latest one (ambiguity fallback)
+            nodeIdMap.set(originalId, safeId);
+
             return {
                 ...n,
                 id: safeId,
@@ -398,19 +417,37 @@ No markdown, no explanation, just JSON.`;
             };
         });
 
+        // 🚢 EDGE RE-ANCHORING: Ensure edges point to the NEW Safe IDs
+        const nodeIds = new Set(fullRoadmap.nodes.map(n => n.id));
+
         fullRoadmap.edges = (fullRoadmap.edges || [])
-            .map((e, i) => ({
-                ...e,
-                id: e.id || `e_f_${i}`,
-                source: String(e.source),
-                target: String(e.target),
-            }));
+            .map((e, i) => {
+                const newSource = nodeIdMap.get(String(e.source)) || e.source;
+                const newTarget = nodeIdMap.get(String(e.target)) || e.target;
+                
+                return {
+                    ...e,
+                    id: `e_f_${i}_${Date.now()}`,
+                    source: String(newSource),
+                    target: String(newTarget),
+                    sourceHandle: 's-bottom',
+                    targetHandle: 't-top',
+                };
+            })
+            .filter(e => {
+                // Remove edges that don't point to valid nodes
+                return nodeIds.has(e.source) && nodeIds.has(e.target);
+            });
 
         res.json(fullRoadmap);
 
     } catch (error) {
-        console.error('[AI Flood] Error:', error.message);
-        res.status(500).json({ message: 'AI enrichment failed.', error: error.message });
+        console.error('[AI Flood] CRITICAL ERROR:', error);
+        res.status(500).json({ 
+            message: 'AI enrichment failed.', 
+            error: error.message,
+            stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+        });
     }
 });
 

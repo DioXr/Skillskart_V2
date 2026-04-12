@@ -3,10 +3,12 @@ import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import RoadmapEditor from '../components/RoadmapEditor';
 import { useAuth } from '../context/AuthContext';
+import { useToast } from '../context/ToastContext';
 import { getLayoutedElements } from '../utils/layout';
 
 const AdminPanelPage = () => {
   const { user, loading } = useAuth();
+  const toast = useToast();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('overview');
   const [roadmaps, setRoadmaps] = useState([]);
@@ -68,7 +70,7 @@ const AdminPanelPage = () => {
       await axios.delete(`/api/roadmaps/${id}`, config);
       fetchRoadmaps();
     } catch (error) {
-      alert('Error deleting: ' + (error.response?.data?.message || error.message));
+      toast.error('Error deleting: ' + (error.response?.data?.message || error.message));
     }
   };
 
@@ -78,7 +80,7 @@ const AdminPanelPage = () => {
       await axios.patch(`/api/auth/users/${userId}/role`, { role: newRole }, config);
       fetchUsers();
     } catch (error) {
-      alert('Failed to update role');
+      toast.error('Failed to update role');
     }
   };
 
@@ -87,10 +89,10 @@ const AdminPanelPage = () => {
     try {
       const config = { headers: { Authorization: `Bearer ${user.token}` } };
       const { data } = await axios.post(`/api/payment/refund/${userId}`, {}, config);
-      alert(data.message || 'Refund successful!');
+      toast.success(data.message || 'Refund successful!');
       fetchUsers();
     } catch (error) {
-      alert('Refund failed: ' + (error.response?.data?.message || error.message));
+      toast.error('Refund failed: ' + (error.response?.data?.message || error.message));
     }
   };
 
@@ -106,9 +108,9 @@ const AdminPanelPage = () => {
       setAiTopic('');
       setActiveTab('content');
       fetchRoadmaps();
-      alert('Roadmap generated successfully!');
+      toast.success('Roadmap generated successfully!');
     } catch (error) {
-      alert('AI generation failed');
+      toast.error('AI generation failed');
     } finally {
       setAiLoading(false);
     }
@@ -122,7 +124,13 @@ const AdminPanelPage = () => {
           <button className="btn-secondary" onClick={() => { setEditingId(null); fetchRoadmaps(); }}>Exit Editor</button>
         </div>
         <div style={{ height: '90%' }}>
-          <RoadmapEditor roadmapId={editingId} onSaveComplete={() => { setEditingId(null); fetchRoadmaps(); }} />
+          <RoadmapEditor 
+            roadmapId={editingId} 
+            onSaveComplete={(savedData) => { 
+                if (savedData?._id) setEditingId(savedData._id);
+                fetchRoadmaps(); 
+            }} 
+          />
         </div>
       </div>
     );

@@ -185,6 +185,7 @@ const EditorInner = () => {
       const config = { headers: { Authorization: `Bearer ${user.token}` } };
       
       // 🛡️ PRE-SAVE SCHEMA GUARD: Ensure every node is technically valid for MongoDB constraints
+      const validResourceTypes = ['video', 'article', 'docs', 'tool', 'code', 'file', 'course', 'book', 'website', 'other'];
       const validatedNodes = nodes.map(n => ({
         ...n,
         type: n.type || 'proNode',
@@ -198,19 +199,27 @@ const EditorInner = () => {
           status: n.data?.status || 'locked',
           nodeType: ['topic', 'subtopic', 'checkpoint', 'milestone'].includes(n.data?.nodeType) 
             ? n.data.nodeType 
-            : 'topic'
+            : 'topic',
+          resources: (n.data?.resources || []).map(r => ({
+            ...r,
+            type: validResourceTypes.includes(String(r.type).toLowerCase()) ? String(r.type).toLowerCase() : 'other'
+          }))
         }
       }));
 
       const data = { title, category, description, nodes: validatedNodes, edges };
 
       if (isNew) {
-        await axios.post('/api/custom-roadmaps', data, config);
+        const { data: savedData } = await axios.post('/api/custom-roadmaps', data, config);
+        // Navigate to the new ID silently so the user can continue editing without a reload
+        if (savedData?._id) {
+          navigate(`/custom-roadmaps/edit/${savedData._id}`, { replace: true });
+        }
       } else {
         await axios.put(`/api/custom-roadmaps/${id}`, data, config);
       }
       toast.success('Roadmap saved successfully! ✓');
-      navigate('/dashboard');
+      // No longer redirecting to /dashboard to allow user to continue refining
     } catch (error) {
       toast.error('Error saving: ' + (error.response?.data?.message || error.response?.data?.details || error.message));
     } finally {

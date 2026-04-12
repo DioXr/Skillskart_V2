@@ -11,7 +11,7 @@ import {
   ReactFlowProvider,
 } from '@xyflow/react';
 import axios from 'axios';
-import { toast } from 'react-hot-toast';
+import { useToast } from '../context/ToastContext';
 import ProNode from './ProNode';
 import { getLayoutedElements } from '../utils/layout';
 import '@xyflow/react/dist/style.css';
@@ -43,6 +43,7 @@ const RoadmapEditorInner = ({ roadmapId, onSaveComplete }) => {
   const [resUrl, setResUrl] = useState('');
   const { user } = JSON.parse(localStorage.getItem('userInfo')) || {};
   const { fitView } = useReactFlow();
+  const toast = useToast();
 
   useEffect(() => {
     if (roadmapId && roadmapId !== 'new') {
@@ -209,28 +210,32 @@ const RoadmapEditorInner = ({ roadmapId, onSaveComplete }) => {
           throw new Error("AI failed to generate any logical milestones. Try a more specific topic name.");
       }
 
-      // 🛡️ ID SANITIZATION: Generate truly unique IDs to prevent key collisions
-      const idMap = {};
+      // 🛡️ FRONTEND ID ENFORCER: Ensure total uniqueness even if server-side sanitization missed something
+      const idMap = new Map();
       const sanitizedNodes = rawNodes.map((n, idx) => {
-          const originalId = n.id || `temp_${idx}`;
-          const newId = `node_f_${Math.random().toString(36).substring(2, 9)}_${Date.now()}`;
-          idMap[originalId] = newId; 
+          const originalId = String(n.id || `ai_temp_${idx}`);
+          
+          // Generate a truly unique ID for this instance
+          const uniqueId = `node_f_${idx}_${Math.random().toString(36).substring(2, 7)}_${Date.now()}`;
+          
+          // Store mapping. If originalId is duplicate, the latest one wins for edge mapping
+          idMap.set(originalId, uniqueId); 
           
           // 🧬 Resource ID Sanitization
           const cleanResources = (n.data?.resources || []).map((r, rIdx) => ({
              ...r,
-             id: `res_f_${Math.random().toString(36).substring(2, 6)}_${rIdx}_${Date.now()}`
+             id: `res_f_${idx}_${rIdx}_${Date.now()}`
           }));
 
           return { 
             ...n, 
-            id: newId,
+            id: uniqueId,
             type: n.type || 'proNode',
             data: {
               ...n.data,
               label: n.data?.label || "New Milestone",
               description: n.data?.description || "Curriculum details pending...",
-              codeSnippet: n.data?.codeSnippet || `// ${n.data?.label || 'Example'}\n// Code sample coming soon\nconsole.log("Learn ${n.data?.label || 'this topic'}");`,
+              codeSnippet: n.data?.codeSnippet || `// ${n.data?.label || 'Example'}\nconsole.log("Learn ${n.data?.label || 'this topic'}");`,
               resources: cleanResources.length > 0 ? cleanResources : [
                 { label: `Search ${n.data?.label || 'this topic'}`, url: `https://www.google.com/search?q=${encodeURIComponent(n.data?.label || 'programming')}+tutorial`, type: 'website' }
               ]
@@ -239,28 +244,22 @@ const RoadmapEditorInner = ({ roadmapId, onSaveComplete }) => {
       });
 
       const sanitizedEdges = rawEdges.map((e, idx) => {
-          // 🚢 FUZZY LINKER: Match by ID first, then by Label (Skill Name)
-          let sourceId = idMap[e.source] || e.source;
-          let targetId = idMap[e.target] || e.target;
+          let sourceId = idMap.get(String(e.source)) || e.source;
+          let targetId = idMap.get(String(e.target)) || e.target;
 
-          // If ID lookup failed, try matching by Label (Skill Name)
+          // Fuzzy Label Match Fallback
           if (!sanitizedNodes.some(n => n.id === sourceId)) {
-            const foundSource = sanitizedNodes.find(n => 
-              n.data.label.toLowerCase() === e.source?.toLowerCase()
-            );
-            if (foundSource) sourceId = foundSource.id;
+            const foundNode = sanitizedNodes.find(n => n.data.label.toLowerCase() === String(e.source).toLowerCase());
+            if (foundNode) sourceId = foundNode.id;
           }
-
           if (!sanitizedNodes.some(n => n.id === targetId)) {
-            const foundTarget = sanitizedNodes.find(n => 
-              n.data.label.toLowerCase() === e.target?.toLowerCase()
-            );
-            if (foundTarget) targetId = foundTarget.id;
+            const foundNode = sanitizedNodes.find(n => n.data.label.toLowerCase() === String(e.target).toLowerCase());
+            if (foundNode) targetId = foundNode.id;
           }
 
           return {
               ...e,
-              id: `edge_f_${Math.random().toString(36).substring(2, 9)}_${Date.now()}`,
+              id: `edge_f_${idx}_${Date.now()}`,
               source: sourceId,
               target: targetId,
               sourceHandle: 's-bottom',
@@ -269,9 +268,7 @@ const RoadmapEditorInner = ({ roadmapId, onSaveComplete }) => {
               className: e.className || 'spine-edge'
           };
       }).filter(e => {
-        // Final integrity check
-        return sanitizedNodes.some(n => n.id === e.source) && 
-               sanitizedNodes.some(n => n.id === e.target);
+        return sanitizedNodes.some(n => n.id === e.source) && sanitizedNodes.some(n => n.id === e.target);
       });
 
       // 🔗 CHAIN LINK FALLBACK: Ensure NO node is an island
@@ -301,8 +298,10 @@ const RoadmapEditorInner = ({ roadmapId, onSaveComplete }) => {
       
       toast.success(`🌊 Smart Flood Complete! Added ${sanitizedNodes.length} professional milestones.`);
     } catch (error) {
-      console.error("Smart Flood Critical Error:", error);
-      toast.error(error.response?.data?.message || "AI architecting failed. Please try again.");
+      console.error("Smart Flood Critical Error:", error.response?.data || error);
+      const serverMsg = error.response?.data?.message || "AI architecting failed.";
+      const specificError = error.response?.data?.error ? ` (${error.response.data.error})` : "";
+      toast.error(serverMsg + specificError);
     } finally {
       setFlooding(false);
     }
@@ -323,6 +322,7 @@ const RoadmapEditorInner = ({ roadmapId, onSaveComplete }) => {
     };
 
     // 🛡️ PRE-SAVE SCHEMA GUARD: Ensure every node is technically valid for MongoDB
+    const validResourceTypes = ['video', 'article', 'docs', 'tool', 'code', 'file', 'course', 'book', 'website', 'other'];
     const validatedNodes = nodes.map(n => ({
       ...n,
       type: n.type || 'proNode',
@@ -336,7 +336,11 @@ const RoadmapEditorInner = ({ roadmapId, onSaveComplete }) => {
         status: n.data?.status || 'locked',
         nodeType: ['topic', 'subtopic', 'checkpoint', 'milestone'].includes(n.data?.nodeType) 
           ? n.data.nodeType 
-          : 'topic'
+          : 'topic',
+        resources: (n.data?.resources || []).map(r => ({
+          ...r,
+          type: validResourceTypes.includes(String(r.type).toLowerCase()) ? String(r.type).toLowerCase() : 'other'
+        }))
       }
     }));
 
@@ -350,12 +354,14 @@ const RoadmapEditorInner = ({ roadmapId, onSaveComplete }) => {
 
     try {
       if (roadmapId === 'new') {
-        await axios.post('/api/roadmaps', roadmapData, config);
+        const { data: savedData } = await axios.post('/api/roadmaps', roadmapData, config);
+        toast.success('Roadmap Created Successfully! 💾');
+        onSaveComplete(savedData);
       } else {
         await axios.put(`/api/roadmaps/${roadmapId}`, roadmapData, config);
+        toast.success('Roadmap Saved Successfully! 💾');
+        onSaveComplete();
       }
-      toast.success('Roadmap Saved Successfully! 💾');
-      onSaveComplete();
     } catch (error) {
       const serverMsg = error.response?.data?.message || "";
       const details = error.response?.data?.details || "";
