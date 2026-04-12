@@ -82,6 +82,18 @@ const AdminPanelPage = () => {
     }
   };
 
+  const handleRefund = async (userId) => {
+    if (!window.confirm('Process a refund? This will instantly downgrade the user to the Free plan and reset credits.')) return;
+    try {
+      const config = { headers: { Authorization: `Bearer ${user.token}` } };
+      const { data } = await axios.post(`/api/payment/refund/${userId}`, {}, config);
+      alert(data.message || 'Refund successful!');
+      fetchUsers();
+    } catch (error) {
+      alert('Refund failed: ' + (error.response?.data?.message || error.message));
+    }
+  };
+
   const generateAiRoadmap = async () => {
     if (!aiTopic) return;
     setAiLoading(true);
@@ -228,6 +240,8 @@ const AdminPanelPage = () => {
                   <tr style={{ borderBottom: '1px solid var(--card-border)' }}>
                     <th style={{ padding: '14px 20px', fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Name</th>
                     <th style={{ padding: '14px 20px', fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Email</th>
+                    <th style={{ padding: '14px 20px', fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Plan</th>
+                    <th style={{ padding: '14px 20px', fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Credits</th>
                     <th style={{ padding: '14px 20px', fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Role</th>
                     <th style={{ padding: '14px 20px', fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', textAlign: 'right' }}>Manage</th>
                   </tr>
@@ -238,14 +252,31 @@ const AdminPanelPage = () => {
                       <td style={{ padding: '14px 20px', fontWeight: '600', fontSize: '0.9rem' }}>{u.name}</td>
                       <td style={{ padding: '14px 20px', color: 'var(--text-muted)', fontSize: '0.85rem' }}>{u.email}</td>
                       <td style={{ padding: '14px 20px' }}>
+                        <span className={`badge ${u.subscription?.plan !== 'free' ? 'badge-career' : 'badge-custom'}`}>
+                          {u.subscription?.plan?.toUpperCase() || 'FREE'}
+                        </span>
+                      </td>
+                      <td style={{ padding: '14px 20px', fontSize: '0.85rem' }}>
+                        ✨ {u.aiCredits !== undefined ? u.aiCredits : 'N/A'}
+                      </td>
+                      <td style={{ padding: '14px 20px' }}>
                         <span className={`badge ${u.role === 'admin' ? 'badge-career' : u.role === 'subadmin' ? 'badge-coding' : 'badge-custom'}`}>
                           {u.role}
                         </span>
                       </td>
-                      <td style={{ padding: '14px 20px', textAlign: 'right' }}>
+                      <td style={{ padding: '14px 20px', textAlign: 'right', display: 'flex', justifyContent: 'flex-end', gap: '8px', alignItems: 'center' }}>
+                        {u.subscription?.plan !== 'free' && u.subscription?.plan && (
+                          <button 
+                            className="btn-danger" 
+                            style={{ padding: '4px 10px', fontSize: '0.75rem' }} 
+                            onClick={() => handleRefund(u._id)}
+                          >
+                            Refund
+                          </button>
+                        )}
                         <select 
                           value={u.role}
-                          disabled={u._id === user._id}
+                          disabled={u._id === user._id || user.role !== 'admin'}
                           onChange={(e) => handleRoleChange(u._id, e.target.value)}
                           style={{ background: 'var(--card)', color: 'var(--text)', border: '1px solid var(--card-border)', padding: '6px 10px', borderRadius: '6px', fontSize: '0.8rem' }}
                         >

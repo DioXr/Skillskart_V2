@@ -32,6 +32,7 @@ app.use('/api/roadmaps', require('./routes/roadmap'));
 app.use('/api/progress', require('./routes/progress'));
 app.use('/api/ai', require('./routes/ai'));
 app.use('/api/custom-roadmaps', require('./routes/customRoadmap'));
+app.use('/api/payment', require('./routes/payment'));
 
 const PORT = process.env.PORT || 5000;
 

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { useToast } from '../context/ToastContext';
 import {
   ReactFlow,
   MiniMap,
@@ -22,6 +23,7 @@ const nodeTypes = { proNode: ProNode };
 const EditorInner = () => {
   const { id } = useParams();
   const { user, refreshUser } = useAuth();
+  const toast = useToast();
   const navigate = useNavigate();
   const isNew = !id || id === 'new';
 
@@ -54,7 +56,7 @@ const EditorInner = () => {
       setEdges(data.edges || []);
     } catch (error) {
       console.error('Error:', error);
-      alert('Could not load this roadmap.');
+      toast.error('Could not load this roadmap.');
       navigate('/dashboard');
     }
   };
@@ -126,7 +128,7 @@ const EditorInner = () => {
   }, [nodes, edges, setNodes, setEdges, fitView]);
 
   const generateWithAI = async () => {
-    if (!title) { alert('Enter a title first.'); return; }
+    if (!title || title.trim().length < 3) { toast.warning('Enter a valid title (at least 3 characters) first.'); return; }
     if (!window.confirm(`Generate a roadmap for "${title}" using AI? This will replace all current nodes.`)) return;
     setAiLoading(true);
     try {
@@ -165,28 +167,52 @@ const EditorInner = () => {
       if (data.description) setDescription(data.description);
       setTimeout(() => fitView({ padding: 0.2, duration: 400 }), 200);
     } catch (error) {
-      alert('AI generation failed. Try again.');
+      const msg = error.response?.data?.message || 'AI generation failed. Try again.';
+      if (error.response?.data?.outOfCredits) {
+        toast.error('No AI credits left. Upgrade to Pro for more generations!');
+      } else {
+        toast.error(msg);
+      }
     } finally {
       setAiLoading(false);
     }
   };
 
   const saveRoadmap = async () => {
-    if (!title) { alert('Title is required.'); return; }
+    if (!title || title.trim().length < 3) { toast.warning('Title must be at least 3 characters.'); return; }
     setSaving(true);
     try {
       const config = { headers: { Authorization: `Bearer ${user.token}` } };
-      const data = { title, category, description, nodes, edges };
+      
+      // 🛡️ PRE-SAVE SCHEMA GUARD: Ensure every node is technically valid for MongoDB constraints
+      const validatedNodes = nodes.map(n => ({
+        ...n,
+        type: n.type || 'proNode',
+        position: {
+          x: n.position?.x ?? 0,
+          y: n.position?.y ?? 0
+        },
+        data: {
+          ...n.data,
+          label: n.data?.label || "Untitled",
+          status: n.data?.status || 'locked',
+          nodeType: ['topic', 'subtopic', 'checkpoint', 'milestone'].includes(n.data?.nodeType) 
+            ? n.data.nodeType 
+            : 'topic'
+        }
+      }));
+
+      const data = { title, category, description, nodes: validatedNodes, edges };
 
       if (isNew) {
         await axios.post('/api/custom-roadmaps', data, config);
       } else {
         await axios.put(`/api/custom-roadmaps/${id}`, data, config);
       }
-      alert('Saved!');
+      toast.success('Roadmap saved successfully! ✓');
       navigate('/dashboard');
     } catch (error) {
-      alert('Error saving: ' + (error.response?.data?.message || error.message));
+      toast.error('Error saving: ' + (error.response?.data?.message || error.response?.data?.details || error.message));
     } finally {
       setSaving(false);
     }

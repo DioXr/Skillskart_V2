@@ -64,18 +64,33 @@ router.put('/:id', protect, admin, async (req, res) => {
 
         if (roadmap) {
             roadmap.title = title || roadmap.title;
-            roadmap.category = category || roadmap.category;
+            // Provide a fallback category for old seeded roadmaps missing this validation field
+            roadmap.category = category || roadmap.category || 'Custom';
             roadmap.description = description || roadmap.description;
             roadmap.nodes = nodes || roadmap.nodes;
             roadmap.edges = edges || roadmap.edges;
 
-            const updatedRoadmap = await roadmap.save();
-            res.json(updatedRoadmap);
+            // 🛠️ MIGRATION: If this was a seeded roadmap without a creator, assign current admin
+            if (!roadmap.createdBy) {
+                roadmap.createdBy = req.user._id;
+            }
+
+            try {
+                const updatedRoadmap = await roadmap.save();
+                res.json(updatedRoadmap);
+            } catch (saveError) {
+                console.error('Mongoose Save Error:', saveError.message);
+                res.status(400).json({ 
+                    message: 'Validation failed. Check if all nodes have labels and valid types.',
+                    details: saveError.message 
+                });
+            }
         } else {
             res.status(404).json({ message: 'Roadmap not found' });
         }
     } catch (error) {
-        res.status(500).json({ message: 'Server error', error: error.message });
+        console.error('Server Update Error:', error.message);
+        res.status(500).json({ message: 'Server error during update', error: error.message });
     }
 });
 
@@ -84,10 +99,9 @@ router.put('/:id', protect, admin, async (req, res) => {
 // @access  Private/Admin
 router.delete('/:id', protect, admin, async (req, res) => {
     try {
-        const roadmap = await Roadmap.findById(req.params.id);
+        const deletedRoadmap = await Roadmap.findByIdAndDelete(req.params.id);
 
-        if (roadmap) {
-            await roadmap.deleteOne();
+        if (deletedRoadmap) {
             res.json({ message: 'Roadmap removed' });
         } else {
             res.status(404).json({ message: 'Roadmap not found' });

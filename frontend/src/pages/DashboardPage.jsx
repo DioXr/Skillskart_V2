@@ -2,13 +2,16 @@ import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
+import { useToast } from '../context/ToastContext';
 
 const DashboardPage = () => {
   const { user, loading } = useAuth();
   const navigate = useNavigate();
+  const toast = useToast();
   const [enrolledRoadmaps, setEnrolledRoadmaps] = useState([]);
   const [customRoadmaps, setCustomRoadmaps] = useState([]);
   const [pageLoading, setPageLoading] = useState(true);
+  const [subscriptionData, setSubscriptionData] = useState(null);
 
   useEffect(() => {
     if (!loading && !user) navigate('/login');
@@ -18,12 +21,14 @@ const DashboardPage = () => {
     const fetchDashboard = async () => {
       try {
         const config = { headers: { Authorization: `Bearer ${user?.token}` } };
-        const [progressRes, customRes] = await Promise.allSettled([
+        const [progressRes, customRes, subRes] = await Promise.allSettled([
           axios.get('/api/progress/my/status', config),
           axios.get('/api/custom-roadmaps', config),
+          axios.get('/api/payment/subscription', config),
         ]);
         if (progressRes.status === 'fulfilled') setEnrolledRoadmaps(progressRes.value.data);
         if (customRes.status === 'fulfilled') setCustomRoadmaps(customRes.value.data);
+        if (subRes.status === 'fulfilled') setSubscriptionData(subRes.value.data);
       } catch (error) {
         console.error('Error fetching dashboard:', error);
       } finally {
@@ -40,8 +45,22 @@ const DashboardPage = () => {
       const config = { headers: { Authorization: `Bearer ${user.token}` } };
       await axios.delete(`/api/custom-roadmaps/${rmId}`, config);
       setCustomRoadmaps(prev => prev.filter(r => r._id !== rmId));
+      toast.success('Roadmap deleted.');
     } catch (error) {
-      alert('Failed to delete.');
+      toast.error('Failed to delete roadmap.');
+    }
+  };
+
+  const handleSelfRefund = async () => {
+    if (!window.confirm("Are you sure you want to cancel your plan and request a refund? You will safely return to the Free Tier instantly.")) return;
+    try {
+      const config = { headers: { Authorization: `Bearer ${user.token}` } };
+      await axios.post('/api/payment/my/refund', {}, config);
+      toast.success("Refund successful. Premium features disabled.");
+      // Soft refresh dashboard state
+      setSubscriptionData(prev => ({ ...prev, plan: 'free', aiCredits: 5 }));
+    } catch (error) {
+      toast.error(error.response?.data?.message || "Refund failed to process. Try again.");
     }
   };
 
@@ -81,7 +100,7 @@ const DashboardPage = () => {
 
       <div className="container" style={{ paddingTop: '32px', paddingBottom: '80px' }}>
         {/* Stats */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '14px', marginBottom: '40px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '14px', marginBottom: '24px' }}>
           <div className="stat-card stat-blue">
             <p style={{ color: 'var(--text-muted)', fontSize: '0.7rem', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px' }}>Active Paths</p>
             <div style={{ fontSize: '2rem', fontWeight: '800', letterSpacing: '-0.02em' }}>{enrolledRoadmaps.length}</div>
@@ -98,7 +117,60 @@ const DashboardPage = () => {
             <p style={{ color: 'var(--text-muted)', fontSize: '0.7rem', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px' }}>Custom Maps</p>
             <div style={{ fontSize: '2rem', fontWeight: '800', letterSpacing: '-0.02em' }}>{customRoadmaps.length}</div>
           </div>
+          <div className="stat-card" style={{ borderLeft: '3px solid var(--accent)' }}>
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.7rem', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px' }}>AI Credits</p>
+            <div style={{ fontSize: '2rem', fontWeight: '800', letterSpacing: '-0.02em', color: 'var(--accent)' }}>{subscriptionData?.aiCredits || 0}</div>
+          </div>
         </div>
+
+        {/* Subscription Plan Card */}
+        {subscriptionData && (
+          <div className="card" style={{ padding: '20px 24px', marginBottom: '28px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px',
+            borderColor: subscriptionData.plan === 'pro' ? 'rgba(59,130,246,0.2)' : subscriptionData.plan === 'team' ? 'rgba(168,85,247,0.2)' : 'var(--card-border)'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+              <div style={{
+                width: '44px', height: '44px', borderRadius: '12px', flexShrink: 0,
+                background: subscriptionData.plan === 'pro' ? 'rgba(59,130,246,0.1)' : subscriptionData.plan === 'team' ? 'rgba(168,85,247,0.1)' : 'rgba(255,255,255,0.04)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.3rem',
+              }}>
+                {subscriptionData.plan === 'pro' ? '⚡' : subscriptionData.plan === 'team' ? '🚀' : '🌱'}
+              </div>
+              <div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '2px' }}>Current Plan</div>
+                <div style={{ fontWeight: '800', fontSize: '1rem', color: subscriptionData.plan === 'pro' ? '#3b82f6' : subscriptionData.plan === 'team' ? '#a855f7' : 'var(--text)' }}>
+                  {subscriptionData.plan.charAt(0).toUpperCase() + subscriptionData.plan.slice(1)}
+                </div>
+              </div>
+              <div style={{ paddingLeft: '16px', borderLeft: '1px solid var(--card-border)' }}>
+                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '2px' }}>AI Credits</div>
+                <div style={{ fontWeight: '700', color: subscriptionData.aiCredits <= 1 ? '#ef4444' : 'var(--text)' }}>
+                  {subscriptionData.aiCredits === 999999 ? '∞' : subscriptionData.aiCredits}
+                  <span style={{ fontWeight: '400', color: 'var(--text-muted)', fontSize: '0.8rem' }}> remaining</span>
+                </div>
+                {subscriptionData.plan !== 'free' && subscriptionData.limits && (
+                  <div style={{ marginTop: '4px' }}>
+                    <div style={{ width: '80px', height: '3px', background: 'rgba(255,255,255,0.06)', borderRadius: '2px', overflow: 'hidden' }}>
+                      <div style={{ width: `${Math.min(100, (subscriptionData.monthlyCreditsUsed / subscriptionData.limits.monthlyAiCredits) * 100)}%`, height: '100%', background: 'var(--accent)', borderRadius: '2px' }} />
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+            {subscriptionData.plan === 'free' ? (
+              <Link to="/pricing">
+                <button className="btn-secondary" style={{ padding: '8px 20px', fontSize: '0.85rem', color: 'var(--accent)', border: '1px solid var(--accent)' }}>Upgrade to Pro</button>
+              </Link>
+            ) : (
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <Link to="/pricing">
+                  <button className="btn-secondary" style={{ padding: '8px 18px', fontSize: '0.82rem' }}>Manage Plan</button>
+                </Link>
+                <button onClick={handleSelfRefund} className="btn-danger" style={{ padding: '8px 18px', fontSize: '0.82rem' }}>Cancel & Refund</button>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* My Custom Roadmaps */}
         <section style={{ marginBottom: '48px' }}>

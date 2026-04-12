@@ -8,17 +8,14 @@ const NODE_HEIGHT = 60;
  * Uses the Dagre library to compute a proper hierarchical tree layout
  * for a set of React Flow nodes and edges.
  * 
- * Direction: Top-to-Bottom (TB)
- * This produces a clean branching tree instead of a straight line.
+ * Direction: Top-to-Bottom (TB) strictly enforced.
  */
-export const getLayoutedElements = (nodes, edges, direction = 'TB') => {
+export const getLayoutedElements = (nodes, edges) => {
   const dagreGraph = new dagre.graphlib.Graph();
   dagreGraph.setDefaultEdgeLabel(() => ({}));
 
-  const isHorizontal = direction === 'LR';
-
   dagreGraph.setGraph({
-    rankdir: direction,
+    rankdir: 'TB',
     nodesep: 80,      // Horizontal spacing between nodes on same rank
     ranksep: 120,     // Vertical spacing between ranks (levels)
     edgesep: 40,      // Spacing between edges
@@ -48,8 +45,8 @@ export const getLayoutedElements = (nodes, edges, direction = 'TB') => {
       return {
         ...node,
         position: { x: 0, y: 0 },
-        targetPosition: isHorizontal ? Position.Left : Position.Top,
-        sourcePosition: isHorizontal ? Position.Right : Position.Bottom,
+        targetPosition: Position.Top,
+        sourcePosition: Position.Bottom,
       };
     }
 
@@ -60,13 +57,12 @@ export const getLayoutedElements = (nodes, edges, direction = 'TB') => {
         x: dagreNode.x - NODE_WIDTH / 2,
         y: dagreNode.y - NODE_HEIGHT / 2,
       },
-      targetPosition: isHorizontal ? Position.Left : Position.Top,
-      sourcePosition: isHorizontal ? Position.Right : Position.Bottom,
+      targetPosition: Position.Top,
+      sourcePosition: Position.Bottom,
     };
   });
 
   // Normalize ALL edges for consistent top-to-bottom rendering
-  // This strips old handle assignments that cause zig-zag lines
   const layoutedEdges = edges.map((edge) => {
     return {
       ...edge,
@@ -75,8 +71,7 @@ export const getLayoutedElements = (nodes, edges, direction = 'TB') => {
       sourceHandle: 's-bottom',
       targetHandle: 't-top',
       type: 'smoothstep',
-      className: edge.className || 'spine-edge',
-      style: { stroke: edge.className === 'branch-edge' ? '#CBD5E1' : '#0a84ff', strokeWidth: edge.className === 'branch-edge' ? 2 : 3 },
+      className: edge.className || 'spine-edge'
     };
   });
 

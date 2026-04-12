@@ -13,18 +13,35 @@ export const AuthProvider = ({ children }) => {
       if (userInfo) {
         const storedUser = JSON.parse(userInfo);
         setUser(storedUser);
-        
-        // --- 🧠 PROFILE SYNC (Ensures latest Roles/Admin status) ---
+
         try {
           const config = { headers: { Authorization: `Bearer ${storedUser.token}` } };
-          const { data: latestProfile } = await axios.get('/api/auth/profile', config);
-          
-          // Re-serialize with token (profile API might not return token)
-          const updatedUser = { ...storedUser, ...latestProfile };
+
+          // Fetch profile and subscription status in parallel
+          const [profileRes, subRes] = await Promise.allSettled([
+            axios.get('/api/auth/profile', config),
+            axios.get('/api/payment/subscription', config),
+          ]);
+
+          let updatedUser = { ...storedUser };
+
+          if (profileRes.status === 'fulfilled') {
+            updatedUser = { ...updatedUser, ...profileRes.value.data };
+          }
+
+          if (subRes.status === 'fulfilled') {
+            updatedUser = {
+              ...updatedUser,
+              subscription: subRes.value.data,
+              aiCredits: subRes.value.data.aiCredits ?? updatedUser.aiCredits,
+            };
+          }
+
           setUser(updatedUser);
           localStorage.setItem('userInfo', JSON.stringify(updatedUser));
+
         } catch (error) {
-          console.error('Session expired or Profile sync failed');
+          console.error('Session expired or sync failed');
           if (error.response?.status === 401) logout();
         }
       }
@@ -64,17 +81,29 @@ export const AuthProvider = ({ children }) => {
 
   const refreshUser = async () => {
     const userInfo = localStorage.getItem('userInfo');
-    if (userInfo) {
-      const storedUser = JSON.parse(userInfo);
-      try {
-        const config = { headers: { Authorization: `Bearer ${storedUser.token}` } };
-        const { data: latestProfile } = await axios.get('/api/auth/profile', config);
-        const updatedUser = { ...storedUser, ...latestProfile };
-        setUser(updatedUser);
-        localStorage.setItem('userInfo', JSON.stringify(updatedUser));
-      } catch (error) {
-        console.error('Refresh User failed', error);
+    if (!userInfo) return;
+    const storedUser = JSON.parse(userInfo);
+    try {
+      const config = { headers: { Authorization: `Bearer ${storedUser.token}` } };
+      const [profileRes, subRes] = await Promise.allSettled([
+        axios.get('/api/auth/profile', config),
+        axios.get('/api/payment/subscription', config),
+      ]);
+
+      let updatedUser = { ...storedUser };
+      if (profileRes.status === 'fulfilled') updatedUser = { ...updatedUser, ...profileRes.value.data };
+      if (subRes.status === 'fulfilled') {
+        updatedUser = {
+          ...updatedUser,
+          subscription: subRes.value.data,
+          aiCredits: subRes.value.data.aiCredits ?? updatedUser.aiCredits,
+        };
       }
+
+      setUser(updatedUser);
+      localStorage.setItem('userInfo', JSON.stringify(updatedUser));
+    } catch (error) {
+      console.error('Refresh User failed', error);
     }
   };
 

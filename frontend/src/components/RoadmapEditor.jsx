@@ -11,11 +11,18 @@ import {
   ReactFlowProvider,
 } from '@xyflow/react';
 import axios from 'axios';
+import { toast } from 'react-hot-toast';
 import ProNode from './ProNode';
 import { getLayoutedElements } from '../utils/layout';
 import '@xyflow/react/dist/style.css';
 
-const nodeTypes = { proNode: ProNode };
+const nodeTypes = {
+  proNode: ProNode,
+  topicNode: ProNode,
+  subtopicNode: ProNode,
+  checkpointNode: ProNode,
+  default: ProNode,
+};
 
 const RoadmapEditorInner = ({ roadmapId, onSaveComplete }) => {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
@@ -61,7 +68,7 @@ const RoadmapEditorInner = ({ roadmapId, onSaveComplete }) => {
         ...params, 
         type: 'smoothstep', 
         animated: false, 
-        className: 'branch-edge'
+        className: 'spine-edge'
     }, eds)),
     [setEdges]
   );
@@ -292,16 +299,21 @@ const RoadmapEditorInner = ({ roadmapId, onSaveComplete }) => {
       // Auto-fit the view after flood
       setTimeout(() => fitView({ padding: 0.2, duration: 500 }), 200);
       
-      alert(`🌊 Smart Flood Complete! Cultivated ${sanitizedNodes.length} professional milestones.`);
+      toast.success(`🌊 Smart Flood Complete! Added ${sanitizedNodes.length} professional milestones.`);
     } catch (error) {
       console.error("Smart Flood Critical Error:", error);
-      alert(error.message || "AI architecting failed. Please try again.");
+      toast.error(error.response?.data?.message || "AI architecting failed. Please try again.");
     } finally {
       setFlooding(false);
     }
   };
 
   const saveRoadmap = async () => {
+    if (!category) {
+      toast.warning("Please select a valid Category (Career, Coding, etc.) before saving.");
+      return;
+    }
+
     setSaving(true);
     const userInfo = JSON.parse(localStorage.getItem('userInfo'));
     const config = {
@@ -310,11 +322,29 @@ const RoadmapEditorInner = ({ roadmapId, onSaveComplete }) => {
       },
     };
 
+    // 🛡️ PRE-SAVE SCHEMA GUARD: Ensure every node is technically valid for MongoDB
+    const validatedNodes = nodes.map(n => ({
+      ...n,
+      type: n.type || 'proNode',
+      position: {
+        x: n.position?.x ?? 0,
+        y: n.position?.y ?? 0
+      },
+      data: {
+        ...n.data,
+        label: n.data?.label || "Untitled",
+        status: n.data?.status || 'locked',
+        nodeType: ['topic', 'subtopic', 'checkpoint', 'milestone'].includes(n.data?.nodeType) 
+          ? n.data.nodeType 
+          : 'topic'
+      }
+    }));
+
     const roadmapData = {
-      title,
+      title: title || "Untitled Roadmap",
       category,
-      description,
-      nodes,
+      description: description || "",
+      nodes: validatedNodes,
       edges,
     };
 
@@ -324,10 +354,15 @@ const RoadmapEditorInner = ({ roadmapId, onSaveComplete }) => {
       } else {
         await axios.put(`/api/roadmaps/${roadmapId}`, roadmapData, config);
       }
-      alert('Roadmap Saved Successfully!');
+      toast.success('Roadmap Saved Successfully! 💾');
       onSaveComplete();
     } catch (error) {
-      alert('Error saving roadmap: ' + error.response?.data?.message);
+      const serverMsg = error.response?.data?.message || "";
+      const details = error.response?.data?.details || "";
+      toast.error(`Save Failed: ${serverMsg} ${details}`);
+      console.error("Save Error:", error.response?.data);
+    } finally {
+      setSaving(false);
     }
   };
 

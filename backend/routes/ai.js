@@ -1,17 +1,57 @@
 const express = require('express');
 const router = express.Router();
 const { protect, admin } = require('../middleware/authMiddleware');
+const { sanitizeBody, validateAIGenerate } = require('../middleware/validators');
 const Groq = require('groq-sdk');
 const User = require('../models/User');
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
-// Preferred model for high-quality roadmap generation
-const AI_MODEL = 'llama-3.3-70b-versatile';
+// Model tiers (Primary is 70B, Fallbacks are Mixtral and 8B)
+const MODELS = {
+    best:    'llama-3.3-70b-versatile',
+    speed:   'llama-3.1-8b-instant',
+    context: 'mixtral-8x7b-32768',
+};
+
+/**
+ * 🛡️ SMART FALLBACK HELPER
+ * Tries the preferred model first. If it hits TPD (Daily) or TPM (Minute) limits,
+ * it automatically retries with a fallback model to prevent 500 crashes.
+ */
+async function callAIWithFallback(params) {
+    const { model, messages, temperature, max_tokens, response_format } = params;
+    
+    try {
+        console.log(`[AI] Attempting ${model}...`);
+        return await groq.chat.completions.create({
+            model, messages, temperature, max_tokens, response_format
+        });
+    } catch (error) {
+        const isRateLimit = error.status === 429 || error.status === 413 || error.message.includes('rate_limit');
+        
+        if (isRateLimit && model !== MODELS.context) {
+            console.warn(`[AI Fallback] ${model} failed (Limit Reached). Retrying with Mixtral...`);
+            return await groq.chat.completions.create({
+                model: MODELS.context,
+                messages, temperature, max_tokens, response_format
+            });
+        }
+        
+        if (isRateLimit && model === MODELS.context) {
+            console.warn(`[AI Fallback] Mixtral failed. Last resort: 8B Instant...`);
+            return await groq.chat.completions.create({
+                model: MODELS.speed,
+                messages, temperature, max_tokens, response_format
+            });
+        }
+        
+        throw error; // Not a rate limit error, throw it up
+    }
+}
 
 /**
  * @route   GET /api/ai/ping
- * @desc    Test connectivity to the AI router
  * @access  Public
  */
 router.get('/ping', (req, res) => {
@@ -19,173 +59,394 @@ router.get('/ping', (req, res) => {
 });
 
 /**
- * @route   POST /api/ai/generate
- * @desc    Generate a full AI Roadmap with proper tree hierarchy
- * @access  Private (Admins or Subadmins only for now to prevent spam)
+ * Build the roadmap.sh-style generation prompt based on tier
  */
-router.post('/generate', protect, async (req, res) => {
-    try {
-        const { topic } = req.body;
-        
-        if (!topic) {
-            return res.status(400).json({ message: 'Please provide a topic for the roadmap' });
-        }
+function buildGenerationPrompt(topic, tier = 'free') {
+    const nodeCount = tier === 'free' ? '18-22' : tier === 'pro' ? '28-35' : '32-40';
+    
+    return `You are an elite curriculum architect. Generate a comprehensive, roadmap.sh-style learning roadmap for: "${topic}"
 
-        // 🛡️ Credit Check
-        const user = await User.findById(req.user._id);
-        
-        // Safety: ensure field exists
-        if (user.aiCredits === undefined) user.aiCredits = 10;
+CRITICAL: Produce EXACTLY ${nodeCount} nodes. Structure it like roadmap.sh — NOT a flat list.
 
-        if (user.aiCredits <= 0 && user.role !== 'admin') {
-            return res.status(403).json({ 
-                message: 'You have exhausted your AI Credits. Please contact support to upgrade.',
-                outOfCredits: true
-            });
-        }
+═══════════════════════════════════════════
+NODE TYPES (use all of them):
+═══════════════════════════════════════════
 
-        console.log(`Generating AI Roadmap for: ${topic} (Remaining Credits: ${user.aiCredits})`);
+1. "topicNode"   — Main learning areas (like roadmap.sh yellow boxes). Largest nodes.
+                   Properties: label, description, difficulty, estimatedHours, phase, resources, codeSnippet
+                   
+2. "subtopicNode"— Specific tools/technologies/concepts under a topic (like roadmap.sh peach/light boxes).
+                   Properties: label, description, resources, codeSnippet
+                   
+3. "checkpointNode" — Milestone nodes (like roadmap.sh dark boxes: "Checkpoint — Build X").
+                   Properties: label, projectSuggestion, description
 
-        const prompt = `You are an expert curriculum designer. Build a professional, hierarchical learning roadmap for "${topic}".
+═══════════════════════════════════════════
+PHASE STRUCTURE (assign each topicNode a phase):
+═══════════════════════════════════════════
 
-CRITICAL STRUCTURE RULES:
-1. Create exactly 10-14 nodes total.
-2. The roadmap MUST have a clear TREE HIERARCHY — NOT a flat linear chain.
-3. There should be 5-7 SPINE nodes forming the main vertical learning path (mark these with "isSpine": true).
-4. Each spine node should have 1-2 BRANCH nodes that represent sub-topics or tools related to that stage (mark with "isSpine": false).
-5. Spine nodes connect vertically: node_1 → node_2 → node_3 etc.
-6. Branch nodes connect from their parent spine node sideways.
+Phase 1 "foundation"  — Prerequisites & basics (first 20% of nodes)
+Phase 2 "core"        — Core skills and main technologies (middle 50%)
+Phase 3 "advanced"    — Advanced patterns, architecture (next 20%)
+Phase 4 "mastery"     — Expert level, real-world production skills (last 10%)
 
-NODE CONTENT RULES:
-- Each node must have a meaningful "label" (2-4 words, e.g. "State Management", "REST API Design").
-- Each node must have a "description" of 2-3 sentences explaining what to learn and why.
-- Each node must have a "codeSnippet" showing a small, real code example relevant to that skill (3-5 lines).
-- Each node must have 2-3 "resources" with REAL URLs to official documentation, MDN, freeCodeCamp, W3Schools, YouTube tutorials, or GitHub repos. Do NOT use placeholder URLs.
+═══════════════════════════════════════════
+EDGE RULES:
+═══════════════════════════════════════════
 
-Return ONLY a valid JSON object matching this exact schema:
+- Spine edges (main vertical path): source → target (topicNode to topicNode)
+  className: "spine-edge"
+  
+- Branch edges (topic to its subtopics): source → target (topicNode to subtopicNode)  
+  className: "branch-edge"
+
+- Checkpoint edges: The checkpoint connects AFTER completing a phase group
+  className: "checkpoint-edge"
+
+Each topicNode MUST have 2-4 subtopicNode children connected to it.
+Place a checkpointNode after every major phase (3-4 checkpoints total).
+
+═══════════════════════════════════════════
+CONTENT REQUIREMENTS (MANDATORY):
+═══════════════════════════════════════════
+
+For EACH topicNode:
+- label: 2-4 words (e.g., "State Management", "REST API Design")
+- description: 2-3 sentences explaining what to learn and why it matters
+- difficulty: one of ["beginner", "intermediate", "advanced"]
+- estimatedHours: realistic integer (e.g., 20, 40, 60)
+- phase: one of ["foundation", "core", "advanced", "mastery"]
+- codeSnippet: 3-8 lines of REAL, RUNNABLE code relevant to the topic
+- resources: 2-3 REAL, WORKING URLs (MDN, official docs, freeCodeCamp, YouTube, GitHub)
+
+For EACH subtopicNode:
+- label: 1-3 words (specific tool/tech/concept name)
+- description: 1-2 sentences
+- resources: 1-2 REAL URLs
+- codeSnippet: optional, 2-5 lines
+
+For EACH checkpointNode:
+- label: "Build [specific project name]" (e.g., "Build a Todo App", "Build a REST API")
+- description: What the user should be able to do at this checkpoint
+- projectSuggestion: A specific, actionable project idea (1 sentence)
+
+═══════════════════════════════════════════
+EXAMPLE STRUCTURE for "JavaScript":
+═══════════════════════════════════════════
+
+spine: Variables & Types → Functions → DOM → Async JS → ES6+ → Modules
+branches off "Variables & Types": [let/const/var, Data Types, Type Coercion]
+branches off "Functions": [Arrow Functions, Closures, Higher-Order Functions]
+checkpoint after DOM: "Build a Static Interactive Page"
+branches off "Async JS": [Promises, async/await, Fetch API]
+checkpoint after Modules: "Build a Complete JS App"
+
+FOLLOW THIS EXACT JSON SCHEMA:
 {
-  "title": "AI Roadmap: ${topic}",
-  "description": "A comprehensive learning path for mastering ${topic}, from fundamentals through advanced concepts.",
-  "category": "Custom",
+  "title": "Complete ${topic} Roadmap",
+  "description": "A comprehensive, structured learning path to master ${topic} from fundamentals to advanced production-ready skills.",
+  "category": "Coding",
   "nodes": [
     {
       "id": "node_1",
-      "type": "proNode",
+      "type": "topicNode",
       "position": { "x": 0, "y": 0 },
       "data": {
-        "label": "Fundamentals",
-        "description": "Core building blocks you need before anything else.",
+        "label": "Getting Started",
+        "description": "Setup dev environment and understand core concepts.",
+        "difficulty": "beginner",
+        "estimatedHours": 10,
+        "phase": "foundation",
+        "nodeType": "topic",
         "isSpine": true,
-        "codeSnippet": "// example code here",
+        "codeSnippet": "// example\\nconsole.log('Hello World');",
         "resources": [
-          { "label": "Official Documentation", "url": "https://real-url.com", "type": "docs" },
-          { "label": "Beginner Tutorial", "url": "https://real-url.com", "type": "video" }
+          { "label": "Official Docs", "url": "https://developer.mozilla.org", "type": "docs" },
+          { "label": "Getting Started Tutorial", "url": "https://www.freecodecamp.org", "type": "course" }
         ]
       }
     },
     {
-      "id": "node_1b",
-      "type": "proNode",
+      "id": "node_1a",
+      "type": "subtopicNode",
       "position": { "x": 0, "y": 0 },
       "data": {
-        "label": "Dev Environment Setup",
-        "description": "Setting up your tools and IDE.",
+        "label": "VS Code Setup",
+        "description": "Configure your IDE for maximum productivity.",
+        "nodeType": "subtopic",
         "isSpine": false,
-        "codeSnippet": "// setup code",
-        "resources": [{ "label": "Setup Guide", "url": "https://real-url.com", "type": "article" }]
+        "resources": [{ "label": "VS Code Guide", "url": "https://code.visualstudio.com/docs", "type": "docs" }]
+      }
+    },
+    {
+      "id": "checkpoint_1",
+      "type": "checkpointNode",
+      "position": { "x": 0, "y": 0 },
+      "data": {
+        "label": "Build Your First App",
+        "description": "At this point you should be able to build a simple working application.",
+        "projectSuggestion": "Build a simple calculator app with HTML, CSS, and JavaScript.",
+        "nodeType": "checkpoint",
+        "isSpine": true
       }
     }
   ],
   "edges": [
-    { "id": "e_1_2", "source": "node_1", "target": "node_2", "type": "step", "className": "spine-edge" },
-    { "id": "e_1_1b", "source": "node_1", "target": "node_1b", "type": "step", "className": "branch-edge" }
+    { "id": "e_1_2", "source": "node_1", "target": "node_2", "type": "smoothstep", "className": "spine-edge" },
+    { "id": "e_1_1a", "source": "node_1", "target": "node_1a", "type": "smoothstep", "className": "branch-edge" },
+    { "id": "e_1_cp1", "source": "node_1", "target": "checkpoint_1", "type": "smoothstep", "className": "checkpoint-edge" }
   ]
 }
 
-CONSTRAINT: "category" MUST be one of: ["Career", "Language", "Coding", "Design", "Custom"].
-CONSTRAINT: resource "type" MUST be one of: ["video", "article", "docs", "tool", "code", "course", "book", "website", "other"].
-CONSTRAINT: All node IDs must be unique strings starting with "node_".
-CONSTRAINT: All edge IDs must be unique strings starting with "e_".
+CONSTRAINTS:
+- "category" MUST be one of: ["Career", "Language", "Coding", "Design", "Custom"]
+- resource "type" MUST be one of: ["video", "article", "docs", "tool", "code", "course", "book", "website", "other"]
+- All IDs must be unique — use patterns like: node_1, node_1a, node_1b, node_2, node_2a, checkpoint_1, etc.
+- Edge IDs must start with "e_"
+- ALL node types used: topicNode, subtopicNode, checkpointNode
+- REAL URLs only — verified links to actual documentation and courses
 
-Return ONLY valid JSON. No markdown, no explanation.`;
+Return ONLY valid JSON. No markdown fences, no explanation, no comments.`;
+}
 
-        const completion = await groq.chat.completions.create({
-            messages: [{ role: 'system', content: prompt }],
-            model: AI_MODEL,
-            temperature: 0.4,
-            max_tokens: 4096,
-            response_format: { type: "json_object" }
+/**
+ * @route   POST /api/ai/generate
+ * @desc    Generate a roadmap.sh-style AI Roadmap with multi-type nodes
+ * @access  Private
+ */
+router.post('/generate', protect, sanitizeBody, validateAIGenerate, async (req, res) => {
+    try {
+        const { topic } = req.body;
+
+        const user = await User.findById(req.user._id);
+        if (user.aiCredits === undefined) user.aiCredits = 5;
+
+        if (user.aiCredits <= 0 && user.role !== 'admin') {
+            return res.status(403).json({
+                message: 'You have run out of AI Credits.',
+                outOfCredits: true
+            });
+        }
+
+        const plan = user.subscription?.plan || 'free';
+        const tier = user.role === 'admin' ? 'admin' : plan;
+        
+        // 🚀 SMART MODEL SELECTION
+        const preferredModel = (tier === 'pro' || tier === 'admin') ? MODELS.best : MODELS.speed;
+
+        console.log(`[AI Generate] Topic: "${topic}" | User: ${user.email} | Tier: ${tier} | Preferred: ${preferredModel}`);
+
+        const prompt = buildGenerationPrompt(topic, tier);
+
+        const completion = await callAIWithFallback({
+            messages: [
+                { role: 'system', content: 'You are an expert curriculum architect. You ONLY output valid JSON.' },
+                { role: 'user', content: prompt }
+            ],
+            model: preferredModel,
+            temperature: 0.35,
+            max_tokens: tier === 'free' ? 4000 : 7000,
+            response_format: { type: 'json_object' }
         });
 
         const jsonContent = completion.choices[0]?.message?.content;
-        const generatedRoadmap = JSON.parse(jsonContent);
 
-        // 📉 Decrement credits safely
-        user.aiCredits = Math.max(0, (user.aiCredits || 10) - 1);
-        await user.save();
+        let generatedRoadmap;
+        try {
+            generatedRoadmap = JSON.parse(jsonContent);
+        } catch (parseErr) {
+            const match = jsonContent.match(/\{[\s\S]*\}/);
+            if (match) {
+                generatedRoadmap = JSON.parse(match[0]);
+            } else {
+                throw new Error('AI returned malformed JSON');
+            }
+        }
 
-        res.json({ ...generatedRoadmap, aiCredits: user.aiCredits });
+        if (!generatedRoadmap.nodes || !Array.isArray(generatedRoadmap.nodes)) {
+            throw new Error('AI response missing nodes array');
+        }
+
+        generatedRoadmap.nodes = generatedRoadmap.nodes.map((n, i) => ({
+            ...n,
+            id: n.id ? String(n.id).replace(/[^a-zA-Z0-9_-]/g, '_') : `node_auto_${i}`,
+            type: n.type || 'topicNode',
+        }));
+
+        const nodeIds = new Set(generatedRoadmap.nodes.map(n => n.id));
+        generatedRoadmap.edges = (generatedRoadmap.edges || [])
+            .filter(e => nodeIds.has(String(e.source)) && nodeIds.has(String(e.target)))
+            .map((e, i) => ({
+                ...e,
+                id: e.id || `e_auto_${i}`,
+                source: String(e.source),
+                target: String(e.target),
+            }));
+
+        if (user.role !== 'admin') {
+            user.aiCredits = Math.max(0, (user.aiCredits || 5) - 1);
+            await user.save();
+        }
+
+        res.json({
+            ...generatedRoadmap,
+            aiCredits: user.aiCredits,
+            nodesGenerated: generatedRoadmap.nodes.length,
+        });
 
     } catch (error) {
-        console.error('AI Generation Error:', error);
-        res.status(500).json({ message: 'Failed to generate roadmap', error: error.message });
+        console.error('[AI Generate] Error:', error.message);
+        res.status(500).json({ message: 'Failed to generate roadmap.', error: error.message });
     }
 });
 
 /**
  * @route   POST /api/ai/flood
- * @desc    Bulk generate descriptions, code, and resources for a skeleton roadmap
+ * @desc    Bulk enrich a skeleton roadmap with AI content
  * @access  Private (Admins only)
  */
 router.post('/flood', protect, admin, async (req, res) => {
     try {
         const { title, nodes } = req.body;
-        
+
         if (!nodes || nodes.length === 0) {
             return res.status(400).json({ message: 'No nodes provided to flood' });
         }
 
-        console.log(`Smart-Flooding Roadmap Structure for: ${title}`);
+        console.log(`[AI Flood] Attempting Best Model: "${title}"`);
 
-        const existingNodeDetails = nodes.map((n, i) => 
-          `  ${i+1}. "${n.data?.label || 'Unknown'}" - ${n.data?.description || 'No description yet'}`
+        const nodeDetails = nodes.map((n, i) =>
+            `  ${i + 1}. [${n.type || 'topic'}] "${n.data?.label || 'Unknown'}" — ${n.data?.description || 'No description'}`
         ).join('\n');
 
-        const prompt = `You are an elite Senior Developer and Master Curriculum Architect. I have an existing roadmap for "${title}" that needs to be FULLY enriched.
+const prompt = `You are an elite Senior Developer and Curriculum Architect evaluating an existing roadmap for "${title}".
 
-EXISTING NODES IN THE ROADMAP:
-${existingNodeDetails}
+EXISTING NODES:
+${nodeDetails}
 
-YOUR MISSION — MANDATORY REQUIREMENTS:
-1. KEEP every existing node listed above. Do NOT remove or rename them.
-2. ENRICH every single node with ALL of the following fields:
-   - "description": A detailed 2-4 sentence explanation.
-   - "codeSnippet": 3-8 lines of REAL, RUNNABLE code.
-   - "resources": 2-3 REAL URLs.
+YOUR MISSION:
+1. KEEP every existing node exactly as it is (do not change their IDs).
+2. ENRICH existing nodes with descriptions, realistic codeSnippets, and 2-3 REAL URLs.
+3. EXPAND the roadmap dynamically. If the roadmap looks bare or lacks depth, you MUST add 5 to 10 new, relevant milestones (type: "subtopicNode" or "checkpointNode") and connect them properly to the existing nodes. 
 
-Return ONLY a valid JSON object matching the standard roadmap format.
-No markdown, no explanation.`;
+IMPORTANT JSON DATA SCHEMA:
+Return ONLY a valid JSON object in this exact format:
+{
+  "nodes": [
+    {
+      "id": "original_id_OR_new_unique_id",
+      "type": "proNode",
+      "data": {
+        "label": "Node Title",
+        "description": "2-4 sentences of real actionable guidance...",
+        "codeSnippet": "runnable code here...",
+        "resources": [ { "label": "Docs", "url": "https://...", "type": "article" } ]
+      }
+    }
+  ],
+  "edges": [
+     { "id": "edge_new_1", "source": "existing_node_id", "target": "new_node_id", "className": "spine-edge" }
+  ]
+}
 
-        const completion = await groq.chat.completions.create({
-            messages: [{ role: 'system', content: prompt }],
-            model: AI_MODEL,
+No markdown, no explanation, just JSON.`;
+
+        const completion = await callAIWithFallback({
+            messages: [
+                { role: 'system', content: 'You output only valid JSON. No markdown, no explanation.' },
+                { role: 'user', content: prompt }
+            ],
+            model: MODELS.best,
             temperature: 0.2,
             max_tokens: 6000,
-            response_format: { type: "json_object" }
+            response_format: { type: 'json_object' }
         });
 
         const jsonContent = completion.choices[0]?.message?.content;
         
-        const startIdx = jsonContent.indexOf('{');
-        const endIdx = jsonContent.lastIndexOf('}');
-        const cleanJson = jsonContent.substring(startIdx, endIdx + 1);
-        const fullRoadmap = JSON.parse(cleanJson);
+        let fullRoadmap;
+        try {
+            fullRoadmap = JSON.parse(jsonContent);
+        } catch (parseErr) {
+            const match = jsonContent.match(/\{[\s\S]*\}/);
+            if (match) {
+                fullRoadmap = JSON.parse(match[0]);
+            } else {
+                throw new Error('AI returned malformed JSON');
+            }
+        }
+
+        if (!fullRoadmap.nodes || !Array.isArray(fullRoadmap.nodes)) {
+            throw new Error('AI response missing nodes array');
+        }
+
+        const seenIds = new Set();
+        fullRoadmap.nodes = fullRoadmap.nodes.map((n, i) => {
+            let safeId = n.id ? String(n.id).replace(/[^a-zA-Z0-9_-]/g, '_') : `node_f_${i}`;
+            if (seenIds.has(safeId)) safeId = `${safeId}_${i}`;
+            seenIds.add(safeId);
+            
+            return {
+                ...n,
+                id: safeId,
+                type: n.type || 'proNode',
+                data: {
+                    ...(n.data || {}),
+                    label: n.data?.label || "Untitled",
+                    status: n.data?.status || 'locked'
+                }
+            };
+        });
+
+        fullRoadmap.edges = (fullRoadmap.edges || [])
+            .map((e, i) => ({
+                ...e,
+                id: e.id || `e_f_${i}`,
+                source: String(e.source),
+                target: String(e.target),
+            }));
 
         res.json(fullRoadmap);
 
     } catch (error) {
-        console.error('Smart Flood Critical Error:', error);
-        res.status(500).json({ message: 'AI architecting failed.', error: error.message });
+        console.error('[AI Flood] Error:', error.message);
+        res.status(500).json({ message: 'AI enrichment failed.', error: error.message });
+    }
+});
+
+/**
+ * @route   POST /api/ai/suggest-resources
+ * @desc    Get AI-suggested resources for a specific topic node
+ * @access  Private (Pro+)
+ */
+router.post('/suggest-resources', protect, async (req, res) => {
+    try {
+        const { nodeLabel, roadmapTitle } = req.body;
+
+        if (!nodeLabel) {
+            return res.status(400).json({ message: 'Node label is required.' });
+        }
+
+        const completion = await callAIWithFallback({
+            messages: [{
+                role: 'user',
+                content: `List the best 5 learning resources for "${nodeLabel}" in the context of learning "${roadmapTitle || 'programming'}".
+Return ONLY a JSON array: {"resources": [{"label":"...","url":"...","type":"...","description":"..."}]}`
+            }],
+            model: MODELS.speed,
+            temperature: 0.3,
+            max_tokens: 1000,
+            response_format: { type: 'json_object' }
+        });
+
+        const content = completion.choices[0]?.message?.content;
+        const parsed = JSON.parse(content);
+        const resources = parsed.resources || parsed.items || parsed || [];
+
+        res.json({ resources: Array.isArray(resources) ? resources : [] });
+    } catch (error) {
+        console.error('[AI Suggest Resources] Error:', error.message);
+        res.status(500).json({ message: 'Failed to suggest resources.' });
     }
 });
 

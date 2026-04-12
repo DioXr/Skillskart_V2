@@ -49,4 +49,12 @@ const admin = (req, res, next) => {
     }
 };
 
-module.exports = { protect, admin, authorizeRoles };
+const superAdmin = (req, res, next) => {
+    if (req.user && req.user.role === 'admin') {
+        next();
+    } else {
+        res.status(403).json({ message: 'Not authorized, requires full Admin privileges.' });
+    }
+};
+
+module.exports = { protect, admin, superAdmin, authorizeRoles };

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
@@ -6,66 +6,118 @@ const Navbar = () => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const [menuOpen, setMenuOpen] = useState(false);
 
-  const handleLogout = () => { logout(); navigate('/'); };
+  const handleLogout = () => {
+    logout();
+    navigate('/');
+    setMenuOpen(false);
+  };
 
-  const isActive = (path) => location.pathname === path || (path === '/explore' && location.pathname.startsWith('/roadmap'));
+  const isActive = (path) => location.pathname === path;
 
-  const navLink = (path, label) => (
-    <Link to={path} style={{
-      color: isActive(path) ? '#fff' : 'var(--text-muted)',
-      fontWeight: isActive(path) ? '600' : '500',
-      fontSize: '0.875rem',
-      transition: 'color 0.15s',
-      position: 'relative',
-      padding: '4px 0',
-    }}>
-      {label}
-      {isActive(path) && (
-        <span style={{
-          position: 'absolute', bottom: '-17px', left: '0', right: '0',
-          height: '2px', background: 'var(--accent)', borderRadius: '1px'
-        }} />
-      )}
-    </Link>
-  );
+  const navLinkStyle = (path) => ({
+    color: isActive(path) ? 'var(--text)' : 'var(--text-muted)',
+    fontSize: '0.875rem',
+    fontWeight: isActive(path) ? '600' : '500',
+    textDecoration: 'none',
+    transition: 'color 0.15s',
+    paddingBottom: '2px',
+    borderBottom: isActive(path) ? '2px solid var(--accent)' : '2px solid transparent',
+  });
+
+  const planConfig = {
+    pro:  { label: 'PRO',  color: '#3b82f6', bg: 'rgba(59,130,246,0.12)',  icon: '⚡' },
+    team: { label: 'TEAM', color: '#a855f7', bg: 'rgba(168,85,247,0.12)', icon: '🚀' },
+    free: { label: null, color: null, bg: null, icon: null },
+  };
+  const plan = user?.subscription?.plan || 'free';
+  const planInfo = planConfig[plan];
 
   return (
     <nav style={{
-      display: 'flex',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      padding: '14px 0',
+      position: 'sticky', top: 0, zIndex: 1000,
+      background: 'rgba(10,10,15,0.85)',
+      backdropFilter: 'blur(16px)',
       borderBottom: '1px solid var(--card-border)',
-    }} className="container">
-      <Link to="/">
-        <div style={{ fontWeight: '800', fontSize: '1.2rem', letterSpacing: '-0.02em' }}>
-          <span style={{ color: '#fff' }}>Skill</span>
-          <span style={{ color: 'var(--accent)' }}>Kart</span>
-        </div>
-      </Link>
+    }}>
+      <div className="container" style={{ height: '70px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        {/* Logo */}
+        <Link to="/" style={{ display: 'flex', alignItems: 'center', gap: '4px', textDecoration: 'none' }}>
+          <span style={{ fontWeight: '800', fontSize: '1.25rem', letterSpacing: '-0.02em', color: 'var(--text)' }}>
+            Skills<span style={{ color: '#3b82f6' }}>kart</span>
+          </span>
+        </Link>
 
-      <div style={{ display: 'flex', gap: '28px', alignItems: 'center' }}>
-        {navLink('/explore', 'Explore')}
-        {user && navLink('/dashboard', 'Dashboard')}
-        {user && (user.role === 'admin' || user.role === 'subadmin' || user.isAdmin) && navLink('/admin', 'Admin')}
-
-        {user ? (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginLeft: '4px' }}>
-            <div style={{
-              width: '30px', height: '30px', borderRadius: '50%',
-              background: 'var(--accent)', display: 'flex', alignItems: 'center',
-              justifyContent: 'center', fontSize: '0.75rem', fontWeight: '700', color: '#fff'
+        {/* Right side - Nav & User Area */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '24px' }}>
+          <Link to="/explore" style={navLinkStyle('/explore')}>Explore</Link>
+          {user && <Link to="/dashboard" style={navLinkStyle('/dashboard')}>Dashboard</Link>}
+          {!user && <Link to="/pricing" style={navLinkStyle('/pricing')}>Pricing</Link>}
+          {user && plan === 'free' && (
+            <Link to="/pricing" style={{ 
+              textDecoration: 'none', 
+              color: '#3b82f6', 
+              fontSize: '0.85rem', 
+              fontWeight: '700', 
+              background: 'rgba(59,130,246,0.1)', 
+              padding: '6px 14px', 
+              borderRadius: '30px',
+              border: '1px solid rgba(59,130,246,0.2)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px'
             }}>
-              {user.name.charAt(0).toUpperCase()}
+              ⚡ Upgrade
+            </Link>
+          )}
+          {user && (user.role === 'admin' || user.role === 'subadmin') ? (
+            <Link to="/admin" style={navLinkStyle('/admin')}>Admin</Link>
+          ) : null}
+
+          {user ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginLeft: '10px' }}>
+              {/* User Avatar Circle */}
+              <div 
+                title={user.name} 
+                style={{
+                  width: '32px', height: '32px', borderRadius: '50%',
+                  background: '#3b82f6',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: '0.9rem', color: '#fff', fontWeight: '700',
+                  cursor: 'default'
+              }}>
+                {user.name?.charAt(0)?.toUpperCase()}
+              </div>
+
+              {/* Logout Button */}
+              <button 
+                onClick={handleLogout} 
+                style={{
+                  background: 'rgba(255,255,255,0.05)',
+                  border: '1px solid var(--card-border)',
+                  color: 'var(--text-muted)',
+                  borderRadius: '20px',
+                  padding: '6px 16px',
+                  fontSize: '0.85rem',
+                  fontWeight: '600',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s'
+                }}
+                onMouseOver={(e) => { e.currentTarget.style.color = '#fff'; e.currentTarget.style.background = 'rgba(255,255,255,0.1)' }}
+                onMouseOut={(e) => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.background = 'rgba(255,255,255,0.05)' }}
+              >
+                Logout
+              </button>
             </div>
-            <button onClick={handleLogout} className="btn-secondary" style={{ padding: '6px 14px', fontSize: '0.78rem' }}>Logout</button>
-          </div>
-        ) : (
-          <Link to="/login">
-            <button className="btn-primary" style={{ padding: '8px 20px', fontSize: '0.8rem' }}>Sign In</button>
-          </Link>
-        )}
+          ) : (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginLeft: '10px' }}>
+              <Link to="/login">
+                <button className="btn-primary" style={{ padding: '8px 20px', fontSize: '0.85rem' }} id="navbar-login-btn">Sign In</button>
+              </Link>
+            </div>
+          )}
+        </div>
       </div>
     </nav>
   );

@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const CustomRoadmap = require('../models/CustomRoadmap');
 const { protect } = require('../middleware/authMiddleware');
+const { sanitizeBody, validateRoadmap } = require('../middleware/validators');
 
 // @route   GET /api/custom-roadmaps
 // @desc    Get all custom roadmaps owned by the logged-in user
@@ -39,7 +40,7 @@ router.get('/:id', protect, async (req, res) => {
 // @route   POST /api/custom-roadmaps
 // @desc    Create a new custom roadmap
 // @access  Private
-router.post('/', protect, async (req, res) => {
+router.post('/', protect, sanitizeBody, validateRoadmap, async (req, res) => {
     try {
         const { title, category, description, nodes, edges, isPublic } = req.body;
         
@@ -67,7 +68,7 @@ router.post('/', protect, async (req, res) => {
 // @route   PUT /api/custom-roadmaps/:id
 // @desc    Update a custom roadmap (owner-only)
 // @access  Private
-router.put('/:id', protect, async (req, res) => {
+router.put('/:id', protect, sanitizeBody, async (req, res) => {
     try {
         const roadmap = await CustomRoadmap.findById(req.params.id);
         if (!roadmap) {

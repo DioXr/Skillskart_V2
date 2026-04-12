@@ -19,6 +19,7 @@
     "express": "^5.2.1",
     "groq-sdk": "^1.1.2",
     "jsonwebtoken": "^9.0.3",
-    "mongoose": "^8.23.0"
+    "mongoose": "^8.23.0",
+    "razorpay": "^2.9.6"
   }
 }
