@@ -169,7 +169,14 @@ const EditorInner = () => {
     } catch (error) {
       const msg = error.response?.data?.message || 'AI generation failed. Try again.';
       if (error.response?.data?.outOfCredits) {
-        toast.error('No AI credits left. Upgrade to Pro for more generations!');
+        const plan = user?.subscription?.plan || 'free';
+        if (plan === 'free') {
+          toast.error('No AI credits left. Upgrade to Pro in the Pricing page for 50 generations!');
+        } else if (plan === 'pro') {
+          toast.error('You have exhausted your 50 Pro credits. Please wait for the next billing cycle or upgrade to Team!');
+        } else {
+          toast.error('You are out of AI credits.');
+        }
       } else {
         toast.error(msg);
       }
@@ -213,7 +220,7 @@ const EditorInner = () => {
         const { data: savedData } = await axios.post('/api/custom-roadmaps', data, config);
         // Navigate to the new ID silently so the user can continue editing without a reload
         if (savedData?._id) {
-          navigate(`/custom-roadmaps/edit/${savedData._id}`, { replace: true });
+          navigate(`/custom/${savedData._id}/edit`, { replace: true });
         }
       } else {
         await axios.put(`/api/custom-roadmaps/${id}`, data, config);

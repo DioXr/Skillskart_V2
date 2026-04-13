@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
+import MockPayModal from '../components/MockPayModal';
 
 const PLANS = [
   {
@@ -99,6 +100,8 @@ const PricingPage = () => {
   const toast = useToast();
   const [billing, setBilling] = useState('monthly');
   const [loadingPlan, setLoadingPlan] = useState(null);
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [paymentData, setPaymentData] = useState(null);
 
   const currentPlan = user?.subscription?.plan || 'free';
 
@@ -116,20 +119,14 @@ const PricingPage = () => {
 
       // ── MOCK/BEECEPTOR BYPASS ──
       if (data.isMock) {
-        try {
-          const verifyRes = await axios.post('/api/payment/verify', {
-            razorpay_order_id: data.orderId,
-            razorpay_payment_id: "mock_pay_" + Date.now(),
-            razorpay_signature: "mock_signature",
-            plan,
-            billingCycle: billing,
-          }, config);
-          toast.success(verifyRes.data.message || 'Subscription activated instantly! 🎉');
-          setTimeout(() => navigate('/dashboard'), 1500);
-        } catch (err) {
-          toast.error('Mock verification failed.');
-          setLoadingPlan(null);
-        }
+        setPaymentData({
+          orderId: data.orderId,
+          plan,
+          billingCycle: billing,
+          amount: data.amount
+        });
+        setShowPaymentModal(true);
+        setLoadingPlan(null);
         return;
       }
 
@@ -247,7 +244,11 @@ const PricingPage = () => {
         {/* Plan Cards */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px', marginBottom: '80px' }}>
           {PLANS.map((plan) => {
+            const planHierarchy = { free: 0, pro: 1, team: 2 };
+            const currentLevel = planHierarchy[currentPlan] || 0;
+            const thisLevel = planHierarchy[plan.id] || 0;
             const isCurrentPlan = currentPlan === plan.id;
+            const isLowerPlan = currentLevel > thisLevel;
             const savings = getSavings(plan);
 
             return (
@@ -354,18 +355,18 @@ const PricingPage = () => {
                 ) : (
                   <button
                     onClick={() => handleUpgrade(plan.id)}
-                    disabled={isCurrentPlan || loadingPlan === plan.id}
+                    disabled={isCurrentPlan || isLowerPlan || loadingPlan === plan.id}
                     className="btn-primary"
                     style={{
                       width: '100%', padding: '12px',
                       justifyContent: 'center', fontSize: '0.9rem', fontWeight: '700',
-                      background: isCurrentPlan ? 'rgba(255,255,255,0.05)' : `linear-gradient(135deg, ${plan.color}, ${plan.color}cc)`,
-                      opacity: isCurrentPlan ? 0.6 : 1,
-                      cursor: isCurrentPlan ? 'default' : 'pointer',
+                      background: (isCurrentPlan || isLowerPlan) ? 'rgba(255,255,255,0.05)' : `linear-gradient(135deg, ${plan.color}, ${plan.color}cc)`,
+                      opacity: (isCurrentPlan || isLowerPlan) ? 0.6 : 1,
+                      cursor: (isCurrentPlan || isLowerPlan) ? 'default' : 'pointer',
                     }}
                     id={`plan-cta-${plan.id}`}
                   >
-                    {loadingPlan === plan.id ? 'Opening payment...' : isCurrentPlan ? 'Current Plan' : plan.cta}
+                    {loadingPlan === plan.id ? 'Opening payment...' : isCurrentPlan ? 'Current Plan' : isLowerPlan ? 'Included in Plan' : plan.cta}
                   </button>
                 )}
               </div>
@@ -423,6 +424,12 @@ const PricingPage = () => {
           ))}
         </div>
       </div>
+      
+      <MockPayModal 
+        show={showPaymentModal} 
+        paymentData={paymentData} 
+        onClose={() => setShowPaymentModal(false)} 
+      />
     </div>
   );
 };

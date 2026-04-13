@@ -55,6 +55,8 @@ export const AuthProvider = ({ children }) => {
       const { data } = await axios.post('/api/auth/login', { email, password });
       setUser(data);
       localStorage.setItem('userInfo', JSON.stringify(data));
+      // Immediately refresh to fetch subscription tier
+      await refreshUser();
       return data;
     } catch (error) {
       console.error('Login Error:', error.response?.data || error.message);

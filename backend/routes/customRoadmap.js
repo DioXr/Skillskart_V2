@@ -60,7 +60,9 @@ router.post('/', protect, sanitizeBody, validateRoadmap, async (req, res) => {
 
         res.status(201).json(roadmap);
     } catch (error) {
+        const fs = require('fs');
         console.error('Create Custom Roadmap Error:', error);
+        fs.writeFileSync('debug_error.json', JSON.stringify({ body: req.body, error: error.message, stack: error.stack }, null, 2));
         res.status(500).json({ message: 'Server error', error: error.message });
     }
 });
@@ -91,7 +93,9 @@ router.put('/:id', protect, sanitizeBody, async (req, res) => {
         const updated = await roadmap.save();
         res.json(updated);
     } catch (error) {
+        const fs = require('fs');
         console.error('Update Custom Roadmap Error:', error);
+        fs.writeFileSync('debug_error.json', JSON.stringify({ body: req.body, error: error.message, stack: error.stack }, null, 2));
         res.status(500).json({ message: 'Server error', error: error.message });
     }
 });

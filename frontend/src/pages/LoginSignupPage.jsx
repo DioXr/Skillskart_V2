@@ -170,12 +170,14 @@ const LoginSignupPage = () => {
               </label>
               <input
                 type="text"
+                name="name"
                 placeholder="John Doe"
                 value={name}
                 onChange={(e) => { setName(e.target.value); if (touched.name) validateField('name', e.target.value); }}
                 onBlur={() => handleBlur('name')}
                 style={inputStyle('name')}
                 id="register-name"
+                autoComplete="name"
               />
               {touched.name && fieldErrors.name && (
                 <div style={errorStyle}>
@@ -192,12 +194,14 @@ const LoginSignupPage = () => {
             </label>
             <input
               type="email"
+              name="email"
               placeholder="you@example.com"
               value={email}
               onChange={(e) => { setEmail(e.target.value); if (touched.email) validateField('email', e.target.value); }}
               onBlur={() => handleBlur('email')}
               style={inputStyle('email')}
               id="login-email"
+              autoComplete="email"
             />
             {touched.email && fieldErrors.email && (
               <div style={errorStyle}>
@@ -214,12 +218,14 @@ const LoginSignupPage = () => {
             <div style={{ position: 'relative' }}>
               <input
                 type={showPassword ? 'text' : 'password'}
+                name="password"
                 placeholder="••••••••"
                 value={password}
                 onChange={(e) => { setPassword(e.target.value); if (touched.password) validateField('password', e.target.value); }}
                 onBlur={() => handleBlur('password')}
                 style={{ ...inputStyle('password'), paddingRight: '44px' }}
                 id="login-password"
+                autoComplete={isLogin ? 'current-password' : 'new-password'}
               />
               <button
                 type="button"

@@ -1,7 +1,11 @@
-import React from 'react';
 import { Link } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 
 const LandingPage = () => {
+  const { user } = useAuth();
+  const plan = user?.subscription?.plan || 'free';
+  const hideExplore = user && plan !== 'free';
+
   return (
     <div className="animate-fade-in">
       {/* Hero Section */}
@@ -33,9 +37,15 @@ const LandingPage = () => {
               <Link to="/explore">
                 <button className="btn-primary" style={{ padding: '13px 32px', fontSize: '0.95rem' }}>Explore Roadmaps</button>
               </Link>
-              <Link to="/login">
-                <button className="btn-secondary" style={{ padding: '13px 28px', fontSize: '0.95rem' }}>Get Started Free</button>
-              </Link>
+              {!user ? (
+                <Link to="/login">
+                  <button className="btn-secondary" style={{ padding: '13px 28px', fontSize: '0.95rem' }}>Get Started Free</button>
+                </Link>
+              ) : (
+                <Link to="/dashboard">
+                  <button className="btn-secondary" style={{ padding: '13px 28px', fontSize: '0.95rem' }}>Go to Dashboard</button>
+                </Link>
+              )}
             </div>
 
             {/* Trust indicators */}
